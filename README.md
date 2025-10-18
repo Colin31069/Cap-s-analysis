@@ -1,96 +1,58 @@
-docs: add summary of 20251007 lanolin analysis pipeline
+# Interactive Lanolin Time-Response Analysis Tool (互動式時間響應分析工具)
 
-# Lanolin Long-Store vs Fresh Pipeline 數據分析流程說明
+## 🎯 專案目的
 
-## 🎯 目的
-比較 **fresh (new)** 與 **long-stored (old)** 兩種保存狀態的 lanolin 薄膜，對 profenofos（兩種濃度：`100x`、`10000x`）滴加後的電容變化動態。最終輸出每個濃度一張對比圖（mean±SEM）與一份對應的 CSV。
+本專案提供一個具備圖形化使用者介面 (GUI) 的互動式分析工具，旨在取代原有的靜態腳本分析流程。使用者可以透過此工具，自由選擇並疊加多種實驗條件（Lanolin 濃度與 Profenofos 稀釋度）的時間響應曲線，即時比較其平均響應趨勢與標準誤 (SEM) 區間，並將分析結果匯出為高品質圖檔。
 
----
-
-## 📂 1. 輸入與資料結構
-
-- 資料夾結構：  
-  `<ROOT>/<濃度: 100x|10000x>/<批次: new|old>/<rep: 1|2|3>(no|L|F|Final).xlsx`
-
-- 每個 replicate 含三段：  
-  - `no.xlsx`：未載膜背景（求 Ci）  
-  - `L.xlsx`：成膜穩態  
-  - `F.xlsx` 或 `Final.xlsx`：成膜延續＋滴藥反應全程  
+此工具採用**前後端分離**的架構，將耗時的數據計算與快速的視覺化操作分開，確保了流暢的使用者體驗。
 
 ---
 
-## ⚙️ 2. 滴藥瞬間偵測
+## ✨ 核心功能
 
-**目標**：找出 F 段中「滴藥瞬間」的索引 `idx_pest`。  
-
-**步驟：**
-1. 以 L 的長度 `L_len` 當成 F 的成膜邊界。  
-2. L 最後 200 點為基線，計算 `mean`、`std`。  
-3. 在 `[L_len, L_len + 300]` 範圍內尋找首個超過 `mean + 3σ` 的點。  
-4. 若失敗則以導數門檻 0.003 pF/步 補強。  
-5. 仍找不到則使用 `L_len`（保守策略）。  
+-   **互動式疊圖**：在同一張圖上自由疊加任意實驗組合的平均響應曲線。
+-   **視覺化統計**：每條曲線皆自動繪製其對應的 SEM 誤差區間，直觀呈現數據穩定性。
+-   **高效能設計**：透過一次性的數據預處理，GUI 操作反應迅速，無需等待重複計算。
+-   **動態圖例**：圖例會根據所選條件自動生成，清晰標示每一條曲線。
+-   **高品質匯出**：可將當前圖表一鍵匯出為 PNG 或 SVG 格式，方便用於報告或論文。
+-   **標準化時間軸**：所有數據皆對齊至共同的時間基準點 (t=0 為滴藥瞬間)，確保比較的一致性。
 
 ---
 
-## 📈 3. 單條曲線轉換
+## 📂 專案結構
 
-函式 `load_and_make_deltaC_series(...)`：  
-1. 讀取 `no`, `L`, `F`。  
-2. 基線 `Ci = mean(no)`。  
-3. 以滴藥瞬間為 0 軸，時間轉為「相對滴藥 (min)」。  
-4. 將 F 段轉為 ΔC％：`(C − Ci)/Ci*100`。  
-5. 選項：
-   - `VISUAL_ZERO_AT_PEST=True` → 顯示上讓 x=0 的 ΔC = 0%。  
-   - `PESTICIDE_ZERO_ADJUST_MIN` 可微調 0 軸位置。  
-6. 回傳兩欄：`Time_after_pesticide (min)`、`DeltaC (%)`。  
+本工具由兩個主要的 Python 腳本和一個中介資料檔案組成：
 
----
+1.  **`preprocess_data.py`** (後端數據處理腳本)
+    -   **功能**：這是您需要**最先執行一次**的腳本。它會遍歷所有原始 `xlsx` 數據，執行所有耗時的計算，例如：偵測滴藥點、計算 `ΔC`、內插至標準時間軸，並計算每個條件的平均曲線與 SEM 曲線。
+    -   **輸出**：產生一個名為 `preprocessed_data.pkl` 的檔案，其中包含了所有 GUI 需要的已處理數據。
 
-## 🧮 4. 多條曲線彙整
+2.  **`interactive_analyzer_gui.py`** (前端 GUI 應用程式)
+    -   **功能**：這是使用者互動的主程式。啟動後，它會快速載入 `preprocessed_data.pkl` 的內容，並提供一個圖形介面讓使用者進行視覺化分析。
+    -   **相依性**：此腳本的執行依賴於 `preprocessed_data.pkl` 檔案的存在。
 
-函式 `summarize_and_plot(ROOT)`：
-1. 處理兩濃度 `100x`, `10000x`。  
-2. 每批次 (new/old) 收集最多 3 條 replicate 曲線。  
-3. 內插到共用時間軸 `-0.5 → 10 min` (每秒一點)。  
-4. Coverage gating：
-   - `MIN_TRACES_COUNT=2`
-   - `MIN_TRACES_FRACTION=0.7` → 不足則設 NaN。  
-5. 計算 mean ± SEM。  
-6. 輸出：
-   - `analysis_outputs/DeltaC_vs_time_<濃度>.png`
-   - `analysis_outputs/DeltaC_mean_sem_<濃度>.csv`  
+3.  **`preprocessed_data.pkl`** (預處理數據檔案)
+    -   **功能**：這是一個二進位檔案，儲存了 `preprocess_data.py` 的計算結果。它扮演了後端與前端之間的橋樑，讓 GUI 能夠秒速載入數據。
 
 ---
 
-## ⚙️ 5. 可調參數
+## 🚀 使用流程
 
-| 類別 | 名稱 | 說明 |
-|------|------|------|
-| 偵測 | `BASELINE_TAIL_OF_L` | 基線取樣長度 |
-| 偵測 | `SEARCH_AFTER_L` | 搜尋窗口長度 |
-| 偵測 | `SIGMA` | σ 門檻倍數 |
-| 偵測 | `DERIV_PF_TH` | 導數備援門檻 |
-| 對齊 | `PESTICIDE_ZERO_ADJUST_MIN` | 0 軸微調 |
-| 顯示 | `VISUAL_ZERO_AT_PEST` | 是否強制 ΔC(0)=0% |
-| 時間 | `X_RANGE_MIN / X_RANGE_MAX` | 時間範圍 |
-| 統計 | `MIN_TRACES_COUNT / MIN_TRACES_FRACTION` | 平均取樣門檻 |
+請遵循以下步驟來使用本工具：
 
----
+### 步驟 1：環境設定
 
-## 🧠 設計理念
+1.  **檔案放置**：將 `preprocess_data.py` 和 `interactive_analyzer_gui.py` 兩個腳本放在同一個資料夾中。
+2.  **數據準備**：確保您的原始數據 (`.xlsx` 檔案) 依照以下結構存放：
+    ```
+    <ROOT>/<待測物濃度>/<Lanolin濃度>/<重複次數>.xlsx
+    ```
+    例如： `E:/.../concetration/1000x/5%/1f.xlsx`
+3.  **路徑配置**：打開 `preprocess_data.py` 腳本，確認 `ROOT` 變數指向您存放原始數據的根目錄。
 
-- 以 L 段尾端穩定區域為基線，確保滴藥偵測穩定。  
-- 使用 ΔC% 相對 Ci，避免絕對偏移。  
-- 共用時間軸 + coverage gating 提高 mean/SEM 可比性。  
-- 圖上同時顯示 fresh 與 long-stored，以視覺化對比反應差異。
+### 步驟 2：執行數據預處理 (僅需一次)
 
----
+打開終端機 (Terminal 或 Command Prompt)，執行 `preprocess_data.py` 腳本。
 
-## 📤 輸出結果範例
-
-- `DeltaC_vs_time_100x.png`：fresh (藍) vs old (紅) ±SEM 帶狀圖。  
-- `DeltaC_mean_sem_100x.csv`：含時間、new_mean/sem、old_mean/sem。
-
----
-
-© 2025 Lanolin Sensor Analysis Pipeline
+```bash
+python preprocess_data.py
