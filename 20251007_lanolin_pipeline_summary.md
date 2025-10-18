@@ -1,3 +1,5 @@
+docs: add summary of 20251007 lanolin analysis pipeline
+
 # Lanolin Long-Store vs Fresh Pipeline 數據分析流程說明
 
 ## 🎯 目的
