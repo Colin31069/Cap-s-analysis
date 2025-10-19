@@ -1,10 +1,10 @@
 # preprocess_data.py
 # -*- coding: utf-8 -*-
 """
-Lanolin Concentration Calibration Curve Analysis Pipeline (v3 - Preprocessing)
+Lanolin Concentration Calibration Curve Analysis Pipeline (v3.1 - Preprocessing with Percentage Change)
 - Processes raw data from the specified folder structure.
-- For each experimental condition, calculates the mean time-response curve (ΔC vs. Time) 
-  and its corresponding Standard Error of the Mean (SEM).
+- For each experimental condition, calculates the mean time-response curve 
+  (ΔC % vs. Time) and its corresponding Standard Error of the Mean (SEM).
 - Serializes and saves all processed curves into a single 'preprocessed_data.pkl' file 
   for fast loading by the interactive GUI.
 """
@@ -19,7 +19,7 @@ import warnings
 
 # =============================== 1. 設定區 (可調參數) =======================================
 # --- 資料夾與檔案結構 ---
-ROOT = r"E:\Onedrive\桌面\新增資料夾\20251018\concetration" # 你的資料根目錄
+ROOT = r"E:\Onedrive\桌面\新增資料夾\1019_lanolin\concetration" # 你的資料根目錄
 LANOLIN_CONCS = ["1%", "2.5%", "5%"]
 PROFENOFOS_DILUTIONS = ["DI water", "100x", "1000x", "2000x", "10000x"]
 REPLICATES = ["1", "2", "3", "4"]
@@ -81,7 +81,7 @@ def safe_interp(x_new: np.ndarray, x: np.ndarray, y: np.ndarray) -> np.ndarray:
 # ============================ 3. 核心計算函式 ==========================
 def process_single_replicate_for_timeseries(xi_path: str, xf_path: str) -> Optional[pd.DataFrame]:
     """
-    處理單一重複實驗，僅回傳對齊後的時間序列 DataFrame (Time_min, Delta_C)
+    處理單一重複實驗，回傳對齊後的時間序列 DataFrame (Time_min, Delta_C_percent)
     """
     df_i = read_xlsx(xi_path)
     df_f = read_xlsx(xf_path)
@@ -90,6 +90,12 @@ def process_single_replicate_for_timeseries(xi_path: str, xf_path: str) -> Optio
         return None
 
     Ci = float(df_i[DATA_COL].mean())
+    
+    # 【修改 1】: 增加分母保護，如果基線電容Ci接近於0，則無法計算百分比，跳過此數據
+    if abs(Ci) < 1e-9:
+        warnings.warn(f"Baseline capacitance (Ci) is near zero in '{os.path.basename(xi_path)}'. Cannot calculate percentage change. Skipping replicate.")
+        return None
+        
     len_i = len(df_i)
     f_data = df_f[DATA_COL].to_numpy()
 
@@ -109,9 +115,12 @@ def process_single_replicate_for_timeseries(xi_path: str, xf_path: str) -> Optio
 
     time_indices = np.arange(len(f_data))
     time_min = (time_indices - idx_drop) * DT_SEC / SEC_PER_MIN
-    delta_C_t = f_data - Ci
     
-    return pd.DataFrame({"Time_min": time_min, "Delta_C": delta_C_t})
+    # 【修改 2】: 更新計算公式為百分比變化
+    delta_C_percent_t = (f_data - Ci) / Ci * 100.0
+    
+    # 【修改 3】: 更新 DataFrame 的欄位名稱
+    return pd.DataFrame({"Time_min": time_min, "Delta_C_percent": delta_C_percent_t})
 
 # ============================ 4. 主流程 ==============================
 def run_preprocessing(root_dir: str):
@@ -143,7 +152,8 @@ def run_preprocessing(root_dir: str):
             interp_rows = []
             for df in timeseries_replicates:
                 x = df["Time_min"].to_numpy()
-                y = df["Delta_C"].to_numpy()
+                # 【修改 4】: 確認使用新的欄位名稱來獲取Y軸數據
+                y = df["Delta_C_percent"].to_numpy()
                 interp_rows.append(safe_interp(COMMON_T, x, y))
             
             if not interp_rows:

@@ -18,7 +18,7 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolb
 from itertools import cycle
 
 # =============================== 1. 設定區 (可調參數) =======================================
-DATA_FILE = os.path.join(r"E:\Onedrive\桌面\新增資料夾\20251018\concetration", 
+DATA_FILE = os.path.join(r"E:\Onedrive\桌面\新增資料夾\1019_lanolin\concetration", 
                          "analysis_outputs_interactive", 
                          "preprocessed_data.pkl")
 
@@ -27,7 +27,8 @@ DATA_FILE = os.path.join(r"E:\Onedrive\桌面\新增資料夾\20251018\concetrat
 COLOR_CYCLE = plt.cm.tab10.colors 
 PLOT_TITLE = "Comparative Time Response Analysis"
 X_AXIS_LABEL = "Time after Reagent Drop (min)"
-Y_AXIS_LABEL = "Capacitance Change (ΔC)"
+# 👇 *** 在這裡進行修改 *** 👇
+Y_AXIS_LABEL = "Capacitance Change (%)" 
 
 # ============================ 2. GUI 應用程式類別 ==========================================
 class CurveAnalyzerApp(tk.Tk):
