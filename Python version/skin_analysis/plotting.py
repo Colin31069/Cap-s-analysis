@@ -23,7 +23,8 @@ def transform_signal_for_display(
     signal: ProcessedSignal,
     display_mode: str,
 ) -> tuple[np.ndarray, np.ndarray, str]:
-    x_plot = signal.time_sec
+    # Align plotted time to the detected drop so overlayed traces share t=0.
+    x_plot = signal.time_sec - signal.drop_time
     y_plot = signal.capacitance
     base = signal.initial_avg
     delta_raw = signal.delta_capacitance
@@ -34,7 +35,7 @@ def transform_signal_for_display(
         delta_str = f"Δ:{delta_pct:.2f}%"
     elif display_mode == "Base":
         limit = min(INITIAL_BASELINE_POINTS, len(signal.capacitance))
-        x_plot = signal.time_sec[:limit]
+        x_plot = x_plot[:limit]
         y_plot = signal.capacitance[:limit]
         delta_str = f"Δ:{delta_raw:.2f}pF"
     else:
@@ -88,7 +89,7 @@ def build_plot_item(
         x_plot=x_plot,
         y_plot=y_plot,
         label_txt=label_txt,
-        drop_time=signal.drop_time,
+        drop_time=0.0,
         line_style=line_style,
         line_color=line_color,
     )

@@ -84,13 +84,13 @@ ROOT/
 3. 從清單選擇目標 `Experiment Folder`。
 4. 視需要展開 `Medicine Metadata`，設定藥品數量並填入每種藥品的名稱與劑量。
 5. 視需求選擇顯示模式：
-   - `Normalized (%)`：以 baseline 為 100% 顯示相對變化
-   - `Raw Data (pF)`：顯示原始電容值
-   - `Baseline Only (Raw 20s)`：只顯示前 20 秒的 baseline 區段
+   - `Normalized (%)`：以 baseline 為 100% 顯示相對變化，時間軸會以偵測到的 drop 作為 `0`
+   - `Raw Data (pF)`：顯示原始電容值，時間軸會以偵測到的 drop 作為 `0`
+   - `Baseline Only (Raw 20s)`：只顯示前 20 秒的 baseline 區段，但仍使用相同的相對 drop 時間軸
 6. 視需求調整圖例與視覺選項：
    - `Overlay Mode`：將不同實驗資料疊加在同一張圖上
    - `Experiment Color`：同一次載入的實驗使用同色，靠線型區分不同 sample
-   - `Show Drop Lines`：顯示 drop time 的垂直輔助線
+   - `Show Drop Lines`：顯示 `0` 秒位置的垂直輔助線，也就是各條曲線對齊後的 drop 參考點
    - `Legend Customization`：控制圖例是否顯示 baseline、delta
 7. 點選 `LOAD & PLOT` 載入並繪圖。
 8. 圖表標題會顯示實驗資料夾名稱與藥品標記資訊。

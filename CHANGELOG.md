@@ -25,3 +25,9 @@ Append-only record of AI agent changes for this workspace.
 - Summary: Reworked the agent instructions to match the current Tkinter project structure, metadata flow, validation expectations, and optional Git branch workflow.
 - Files: `AGENTS.md`, `CHANGELOG.md`
 - Verification: Documentation-only change; no code tests run
+
+## 2026-04-13 16:40 +08:00
+
+- Summary: Shifted plotted time axes to use the detected drop as `0`, updated the GUI label/drop marker behavior, and documented the new overlay semantics.
+- Files: `Python version/skin_analysis/plotting.py`, `Python version/skin_analysis/gui.py`, `Python version/tests/test_plotting.py`, `README.md`, `CHANGELOG.md`
+- Verification: `cd "Python version" && python3 -m unittest tests.test_plotting tests.test_analysis`; `cd "Python version" && python3 -m unittest discover`; `cd "Python version" && python3 -m py_compile main.py skin_analysis/*.py`

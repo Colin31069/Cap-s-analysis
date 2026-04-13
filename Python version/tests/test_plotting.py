@@ -5,7 +5,13 @@ import unittest
 import numpy as np
 
 from skin_analysis.models import ExperimentMetadata, MedicineEntry, PlotSettings, ProcessedSignal
-from skin_analysis.plotting import build_legend_label, build_plot_title, display_mode_to_y_unit, transform_signal_for_display
+from skin_analysis.plotting import (
+    build_legend_label,
+    build_plot_item,
+    build_plot_title,
+    display_mode_to_y_unit,
+    transform_signal_for_display,
+)
 
 
 def make_settings(**overrides) -> PlotSettings:
@@ -73,21 +79,25 @@ class PlottingTests(unittest.TestCase):
 
     def test_transform_signal_for_normalized_mode(self) -> None:
         x_plot, y_plot, delta_str = transform_signal_for_display(make_signal(), "Norm")
-        np.testing.assert_allclose(x_plot, np.array([0.0, 0.1, 0.2, 0.3]))
+        np.testing.assert_allclose(x_plot, np.array([-0.2, -0.1, 0.0, 0.1]))
         np.testing.assert_allclose(y_plot, np.array([100.0, 120.0, 140.0, 160.0]))
         self.assertEqual(delta_str, "Δ:25.00%")
 
     def test_transform_signal_for_raw_mode(self) -> None:
         x_plot, y_plot, delta_str = transform_signal_for_display(make_signal(), "Raw")
-        np.testing.assert_allclose(x_plot, np.array([0.0, 0.1, 0.2, 0.3]))
+        np.testing.assert_allclose(x_plot, np.array([-0.2, -0.1, 0.0, 0.1]))
         np.testing.assert_allclose(y_plot, np.array([10.0, 12.0, 14.0, 16.0]))
         self.assertEqual(delta_str, "Δ:2.50pF")
 
     def test_transform_signal_for_baseline_mode(self) -> None:
         x_plot, y_plot, delta_str = transform_signal_for_display(make_signal(), "Base")
-        np.testing.assert_allclose(x_plot, np.array([0.0, 0.1, 0.2, 0.3]))
+        np.testing.assert_allclose(x_plot, np.array([-0.2, -0.1, 0.0, 0.1]))
         np.testing.assert_allclose(y_plot, np.array([10.0, 12.0, 14.0, 16.0]))
         self.assertEqual(delta_str, "Δ:2.50pF")
+
+    def test_build_plot_item_places_drop_marker_at_zero(self) -> None:
+        item = build_plot_item(make_signal(), "3", make_settings(display_mode="Raw"), "-", None)
+        self.assertAlmostEqual(item.drop_time, 0.0)
 
     def test_display_mode_to_y_unit(self) -> None:
         self.assertEqual(display_mode_to_y_unit("Norm"), "Normalized (%)")

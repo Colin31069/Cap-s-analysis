@@ -468,7 +468,7 @@ class RawDataViewerApp(tk.Tk):
     def clear_plot(self) -> None:
         self.ax.clear()
         self.ax.set_title("Ready", fontsize=14)
-        self.ax.set_xlabel("Time (s)")
+        self.ax.set_xlabel("Time from Drop (s)")
         self.ax.set_ylabel("Value")
         self.ax.grid(True, linestyle=":", alpha=0.6)
         self.color_cycler = cycle(COLOR_PALETTE)
@@ -539,6 +539,7 @@ class RawDataViewerApp(tk.Tk):
             self.clear_plot()
 
         self.ax.set_title(payload.title, fontsize=12)
+        self.ax.set_xlabel("Time from Drop (s)")
         self.ax.set_ylabel(payload.y_unit)
 
         count = 0
