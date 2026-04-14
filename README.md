@@ -84,17 +84,23 @@ ROOT/
 3. 從清單選擇目標 `Experiment Folder`。
 4. 視需要展開 `Medicine Metadata`，設定藥品數量並填入每種藥品的名稱與劑量。
 5. 視需求選擇顯示模式：
-   - `Normalized (%)`：以 baseline 為 100% 顯示相對變化，時間軸會以偵測到的 drop 作為 `0`
+   - `Normalized (%)`：以每個檔案各自 baseline 視窗平均值為 100% 顯示相對變化，時間軸會以偵測到的 drop 作為 `0`
    - `Raw Data (pF)`：顯示原始電容值，時間軸會以偵測到的 drop 作為 `0`
-   - `Baseline Only (Raw 20s)`：只顯示前 20 秒的 baseline 區段，但仍使用相同的相對 drop 時間軸
-6. 視需求調整圖例與視覺選項：
+   - `Baseline Only (Raw Baseline Window)`：只顯示本次設定的 baseline 區段，但仍使用相同的相對 drop 時間軸
+6. 視需求調整 timing、圖例與視覺選項：
+   - `Baseline Duration (s)`：設定前面多少秒拿來做 baseline 平均；只保留在本次程式執行期間，不會寫入 metadata
+   - `Drug Apply Time (s)`：設定大約在幾秒附近施加藥品
+   - `Apply Window +/- (s)`：設定施藥時間上下各容許多少秒做 drop 搜尋
+   - `Baseline Accuracy Threshold (%)`：設定 baseline 品質警示門檻；只用來提示，不會改變 `Normalized (%)` 的 100% 定義，也不會自動排除資料
    - `Overlay Mode`：將不同實驗資料疊加在同一張圖上
    - `Experiment Color`：同一次載入的實驗使用同色，靠線型區分不同 sample
    - `Show Drop Lines`：顯示 `0` 秒位置的垂直輔助線，也就是各條曲線對齊後的 drop 參考點
-   - `Legend Customization`：控制圖例是否顯示 baseline、delta
+   - `Legend Customization`：控制圖例是否顯示 baseline、delta；若 baseline 品質可疑，圖例會加上 `注意` 或 `不準確`
 7. 點選 `LOAD & PLOT` 載入並繪圖。
-8. 圖表標題會顯示實驗資料夾名稱與藥品標記資訊。
-9. 需要輸出圖片時，點選 `Export Plot` 儲存成 `.png`。
+8. 如果 baseline 視窗和施藥搜尋區間重疊，程式會自動縮短 baseline 視窗；如果在指定的施藥時間區間內沒有找到明顯反應點，程式會警告後退回自動搜尋。
+9. 如果某些檔案的 baseline 視窗尾端偏移過大，或在 baseline 期間就出現連續上升，程式會跳出警示視窗列出受影響的 sample，供使用者自行判斷是否接受這筆實驗資料。
+10. 圖表標題會顯示實驗資料夾名稱與藥品標記資訊。
+11. 需要輸出圖片時，點選 `Export Plot` 儲存成 `.png`。
 
 ## 測試與驗證
 

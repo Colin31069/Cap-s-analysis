@@ -9,7 +9,16 @@ from tkinter import filedialog, messagebox, ttk
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 from matplotlib.figure import Figure
 
-from .config import COLOR_PALETTE, DEFAULT_MEDICINE_COUNT, DEFAULT_ROOT_PATH, MAX_MEDICINES
+from .config import (
+    COLOR_PALETTE,
+    DEFAULT_BASELINE_DURATION_SEC,
+    DEFAULT_BASELINE_WARNING_THRESHOLD_PCT,
+    DEFAULT_MEDICINE_COUNT,
+    DEFAULT_DRUG_APPLY_TIME_SEC,
+    DEFAULT_DRUG_APPLY_TOLERANCE_SEC,
+    DEFAULT_ROOT_PATH,
+    MAX_MEDICINES,
+)
 from .filesystem import get_subfolders, list_xlsx_files, normalize_directory_path, resolve_directory_path
 from .metadata import (
     default_experiment_metadata,
@@ -34,6 +43,12 @@ class RawDataViewerApp(tk.Tk):
         self.overlay_mode_var = tk.BooleanVar(value=False)
         self.display_mode_var = tk.StringVar(value="Norm")
         self.group_color_var = tk.BooleanVar(value=True)
+        self.baseline_duration_var = tk.StringVar(value=f"{DEFAULT_BASELINE_DURATION_SEC:.1f}")
+        self.drug_apply_time_var = tk.StringVar(value=f"{DEFAULT_DRUG_APPLY_TIME_SEC:.1f}")
+        self.drug_apply_tolerance_var = tk.StringVar(value=f"{DEFAULT_DRUG_APPLY_TOLERANCE_SEC:.1f}")
+        self.baseline_warning_threshold_var = tk.StringVar(
+            value=f"{DEFAULT_BASELINE_WARNING_THRESHOLD_PCT:.1f}"
+        )
 
         self.legend_style_var = tk.StringVar(value="Detailed")
         self.leg_show_base = tk.BooleanVar(value=True)
@@ -51,6 +66,7 @@ class RawDataViewerApp(tk.Tk):
         self._is_loading_metadata = False
         self._metadata_expanded = False
         self._metadata_toggle_text = tk.StringVar(value="")
+        self._warning_dialog: tk.Toplevel | None = None
 
         self.create_widgets()
         self.refresh_folder_structure(show_errors=False)
@@ -154,13 +170,65 @@ class RawDataViewerApp(tk.Tk):
         self._control_widgets.append(self.display_raw_rb)
         self.display_base_rb = ttk.Radiobutton(
             controls_frame,
-            text="Baseline Only (Raw 20s)",
+            text="Baseline Only (Raw Baseline Window)",
             variable=self.display_mode_var,
             value="Base",
         )
         self.display_base_rb.pack(anchor=tk.W)
         self._control_widgets.append(self.display_base_rb)
         ttk.Separator(controls_frame, orient="horizontal").pack(fill="x", pady=10)
+
+        timing_frame = ttk.LabelFrame(controls_frame, text="Timing Controls", padding=5)
+        timing_frame.pack(fill=tk.X, pady=5)
+        ttk.Label(timing_frame, text="Baseline Duration (s)").pack(anchor=tk.W)
+        self.baseline_duration_spinbox = ttk.Spinbox(
+            timing_frame,
+            from_=0.1,
+            to=600.0,
+            increment=0.1,
+            textvariable=self.baseline_duration_var,
+            width=8,
+        )
+        self.baseline_duration_spinbox.pack(anchor=tk.W, pady=(2, 6))
+        self._control_widgets.append(self.baseline_duration_spinbox)
+
+        ttk.Label(timing_frame, text="Drug Apply Time (s)").pack(anchor=tk.W)
+        self.drug_apply_time_spinbox = ttk.Spinbox(
+            timing_frame,
+            from_=0.0,
+            to=600.0,
+            increment=0.1,
+            textvariable=self.drug_apply_time_var,
+            width=8,
+        )
+        self.drug_apply_time_spinbox.pack(anchor=tk.W, pady=(2, 6))
+        self._control_widgets.append(self.drug_apply_time_spinbox)
+
+        ttk.Label(timing_frame, text="Apply Window +/- (s)").pack(anchor=tk.W)
+        self.drug_apply_tolerance_spinbox = ttk.Spinbox(
+            timing_frame,
+            from_=0.0,
+            to=600.0,
+            increment=0.1,
+            textvariable=self.drug_apply_tolerance_var,
+            width=8,
+        )
+        self.drug_apply_tolerance_spinbox.pack(anchor=tk.W, pady=(2, 0))
+        self._control_widgets.append(self.drug_apply_tolerance_spinbox)
+
+        baseline_warning_frame = ttk.LabelFrame(controls_frame, text="Baseline Accuracy", padding=5)
+        baseline_warning_frame.pack(fill=tk.X, pady=5)
+        ttk.Label(baseline_warning_frame, text="Warning Threshold (%)").pack(anchor=tk.W)
+        self.baseline_warning_spinbox = ttk.Spinbox(
+            baseline_warning_frame,
+            from_=0.0,
+            to=100.0,
+            increment=0.1,
+            textvariable=self.baseline_warning_threshold_var,
+            width=8,
+        )
+        self.baseline_warning_spinbox.pack(anchor=tk.W, pady=(2, 0))
+        self._control_widgets.append(self.baseline_warning_spinbox)
 
         leg_frame = ttk.LabelFrame(controls_frame, text="Legend Customization", padding=5)
         leg_frame.pack(fill=tk.X, pady=5)
@@ -422,6 +490,33 @@ class RawDataViewerApp(tk.Tk):
             return
         self._autosave_current_metadata()
 
+    def _get_analysis_timing_settings(self) -> tuple[float, float, float]:
+        try:
+            baseline_duration_sec = float(self.baseline_duration_var.get())
+            drug_apply_time_sec = float(self.drug_apply_time_var.get())
+            drug_apply_tolerance_sec = float(self.drug_apply_tolerance_var.get())
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Timing controls must contain valid numbers.") from exc
+
+        if baseline_duration_sec <= 0:
+            raise ValueError("Baseline Duration must be greater than 0 seconds.")
+        if drug_apply_time_sec < 0:
+            raise ValueError("Drug Apply Time must be 0 or greater.")
+        if drug_apply_tolerance_sec < 0:
+            raise ValueError("Apply Window +/- must be 0 or greater.")
+
+        return baseline_duration_sec, drug_apply_time_sec, drug_apply_tolerance_sec
+
+    def _get_baseline_warning_threshold_pct(self) -> float:
+        try:
+            value = float(self.baseline_warning_threshold_var.get())
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Baseline Accuracy Threshold must be a valid number.") from exc
+
+        if value < 0:
+            raise ValueError("Baseline Accuracy Threshold must be 0 or greater.")
+        return value
+
     def _set_plotting_state(self, plotting: bool) -> None:
         self.is_plotting = plotting
         self.set_controls_enabled(not plotting)
@@ -502,6 +597,20 @@ class RawDataViewerApp(tk.Tk):
             self.experiment_list.focus_set()
             return
 
+        try:
+            baseline_duration_sec, drug_apply_time_sec, drug_apply_tolerance_sec = self._get_analysis_timing_settings()
+        except ValueError as exc:
+            messagebox.showwarning("Invalid Timing", str(exc))
+            self.baseline_duration_spinbox.focus_set()
+            return
+
+        try:
+            baseline_warning_threshold_pct = self._get_baseline_warning_threshold_pct()
+        except ValueError as exc:
+            messagebox.showwarning("Invalid Threshold", str(exc))
+            self.baseline_warning_spinbox.focus_set()
+            return
+
         self._autosave_current_metadata()
         settings = PlotSettings(
             experiment_name=experiment_name,
@@ -515,6 +624,10 @@ class RawDataViewerApp(tk.Tk):
             leg_style=self.legend_style_var.get(),
             show_base=self.leg_show_base.get(),
             show_delta=self.leg_show_delta.get(),
+            baseline_duration_sec=baseline_duration_sec,
+            drug_apply_time_sec=drug_apply_time_sec,
+            drug_apply_tolerance_sec=drug_apply_tolerance_sec,
+            baseline_warning_threshold_pct=baseline_warning_threshold_pct,
         )
         group_color = self._next_group_color(settings.is_overlay) if settings.use_group_color else None
 
@@ -564,11 +677,104 @@ class RawDataViewerApp(tk.Tk):
             self.canvas.draw_idle()
 
         self._set_plotting_state(False)
+        self._show_plot_warnings(payload)
 
     def _plot_data_failed(self, exc: Exception) -> None:
         self._set_plotting_state(False)
         self.experiment_list.focus_set()
         messagebox.showerror("Plot Error", f"Failed to load or plot data.\n\n{exc}")
+
+    def _show_warning_dialog(self, title: str, lines: list[str]) -> None:
+        if not lines:
+            return
+
+        if self._warning_dialog is not None and self._warning_dialog.winfo_exists():
+            self._warning_dialog.destroy()
+
+        dialog = tk.Toplevel(self)
+        dialog.title(title)
+        dialog.transient(self)
+        dialog.resizable(True, True)
+
+        def close_dialog() -> None:
+            if self._warning_dialog is dialog:
+                self._warning_dialog = None
+            dialog.destroy()
+
+        dialog.protocol("WM_DELETE_WINDOW", close_dialog)
+        frame = ttk.Frame(dialog, padding=10)
+        frame.pack(fill=tk.BOTH, expand=True)
+
+        text_frame = ttk.Frame(frame)
+        text_frame.pack(fill=tk.BOTH, expand=True)
+        scrollbar = ttk.Scrollbar(text_frame, orient=tk.VERTICAL)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        text_widget = tk.Text(
+            text_frame,
+            wrap="word",
+            height=min(18, max(8, len(lines) + 2)),
+            yscrollcommand=scrollbar.set,
+        )
+        text_widget.insert("1.0", "\n".join(lines))
+        text_widget.configure(state="disabled")
+        text_widget.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.configure(command=text_widget.yview)
+
+        ttk.Button(frame, text="Close", command=close_dialog).pack(anchor=tk.E, pady=(8, 0))
+        dialog.lift()
+        dialog.focus_set()
+        self._warning_dialog = dialog
+
+    def _build_baseline_warning_lines(self, payload: PlotPayload) -> list[str]:
+        flagged_items = [item for item in payload.plot_items if item.baseline_warning_status != "ok"]
+        if not flagged_items:
+            return []
+
+        status_labels = {"warning": "注意", "inaccurate": "不準確"}
+        warning_lines = [
+            "[Baseline Accuracy]",
+            "The selected baseline window may already be contaminated in these files:",
+            f"Threshold: {payload.settings.baseline_warning_threshold_pct:.2f}%",
+            "",
+        ]
+
+        for item in flagged_items:
+            details = "；".join(item.baseline_warning_details) if item.baseline_warning_details else "baseline 偏移"
+            warning_lines.append(
+                f"N {item.sample_name}: {status_labels[item.baseline_warning_status]} - {details}"
+            )
+
+        return warning_lines
+
+    def _build_timing_warning_lines(self, payload: PlotPayload) -> list[str]:
+        flagged_items = [item for item in payload.plot_items if item.timing_warning_details]
+        if not flagged_items:
+            return []
+
+        warning_lines = [
+            "[Timing Adjustments]",
+            (
+                f"Requested timing: baseline {payload.settings.baseline_duration_sec:.1f}s, "
+                f"apply {payload.settings.drug_apply_time_sec:.1f}s +/- "
+                f"{payload.settings.drug_apply_tolerance_sec:.1f}s"
+            ),
+            "",
+        ]
+
+        for item in flagged_items:
+            warning_lines.append(f"N {item.sample_name}: {'; '.join(item.timing_warning_details)}")
+
+        return warning_lines
+
+    def _show_plot_warnings(self, payload: PlotPayload) -> None:
+        warning_lines = self._build_baseline_warning_lines(payload)
+        timing_lines = self._build_timing_warning_lines(payload)
+
+        if warning_lines and timing_lines:
+            warning_lines.append("")
+        warning_lines.extend(timing_lines)
+        self._show_warning_dialog("Plot Warnings", warning_lines)
 
     def export_plot(self) -> None:
         path = filedialog.asksaveasfilename(defaultextension=".png")

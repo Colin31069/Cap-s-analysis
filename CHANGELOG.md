@@ -31,3 +31,15 @@ Append-only record of AI agent changes for this workspace.
 - Summary: Shifted plotted time axes to use the detected drop as `0`, updated the GUI label/drop marker behavior, and documented the new overlay semantics.
 - Files: `Python version/skin_analysis/plotting.py`, `Python version/skin_analysis/gui.py`, `Python version/tests/test_plotting.py`, `README.md`, `CHANGELOG.md`
 - Verification: `cd "Python version" && python3 -m unittest tests.test_plotting tests.test_analysis`; `cd "Python version" && python3 -m unittest discover`; `cd "Python version" && python3 -m py_compile main.py skin_analysis/*.py`
+
+## 2026-04-14 00:50 +08:00
+
+- Summary: Added first-20s baseline accuracy warnings with configurable thresholds, surfaced warning states in legends and GUI dialogs, and documented the new user guidance.
+- Files: `Python version/skin_analysis/config.py`, `Python version/skin_analysis/analysis.py`, `Python version/skin_analysis/models.py`, `Python version/skin_analysis/plotting.py`, `Python version/skin_analysis/gui.py`, `Python version/tests/test_analysis.py`, `Python version/tests/test_plotting.py`, `README.md`, `CHANGELOG.md`
+- Verification: `cd "Python version" && python3 -m unittest tests.test_analysis tests.test_plotting`; `cd "Python version" && python3 -m unittest discover`; `cd "Python version" && python3 -m py_compile main.py skin_analysis/*.py`; manual spot-check with `exprimental_data/J_fin`
+
+## 2026-04-14 01:18 +08:00
+
+- Summary: Added session-only timing controls for baseline duration and drug-apply search windows, auto-shortened overlapping baselines, and surfaced fallback timing warnings in the plot workflow.
+- Files: `Python version/skin_analysis/config.py`, `Python version/skin_analysis/analysis.py`, `Python version/skin_analysis/models.py`, `Python version/skin_analysis/plotting.py`, `Python version/skin_analysis/gui.py`, `Python version/tests/test_analysis.py`, `Python version/tests/test_plotting.py`, `README.md`, `CHANGELOG.md`
+- Verification: `cd "Python version" && python3 -m unittest tests.test_analysis tests.test_plotting`; `cd "Python version" && python3 -m unittest discover`; `cd "Python version" && python3 -m py_compile main.py skin_analysis/*.py`; manual spot-check with `exprimental_data/J_fin`
