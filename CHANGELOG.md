@@ -49,3 +49,9 @@ Append-only record of AI agent changes for this workspace.
 - Summary: Restructured repository layout — renamed folders to remove spaces and standardise naming, moved archived prototype and standalone scripts to dedicated directories, added Tauri edition section to README, updated all cross-references, and rewrote CLAUDE.md from AGENTS.md for Claude Code conventions.
 - Files: `python-app/` (was `Python version/`), `tauri-app/` (was `desktop-tauri/`), `archive/` (was `main_alalysis_old/`), `scripts/` (new), `CLAUDE.md`, `README.md`, `MIGRATION_RULES.md`, `tauri-app/README.md`, `CHANGELOG.md`
 - Verification: `cd python-app && python3 -m py_compile main.py skin_analysis/*.py`; `cd python-app && python3 -m unittest discover`
+
+## 2026-04-22 14:00 +08:00
+
+- Summary: Added IMPROVEMENTS.md — a prioritized improvement backlog covering GUI/UX, analysis algorithm, architecture, and test coverage; referenced it from CLAUDE.md under a new "Improvement Backlog" section.
+- Files: `IMPROVEMENTS.md` (new), `CLAUDE.md`, `CHANGELOG.md`
+- Verification: Documentation-only change; no code tests required

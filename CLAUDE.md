@@ -97,6 +97,13 @@ Background workers may read files and build `PlotPayload`. All Tk widget updates
 - New GUI controls → `gui.py` + update corresponding settings/models
 - New or updated tests → `tests/` (write tests before changing behavior)
 
+## Improvement Backlog
+
+See [IMPROVEMENTS.md](./IMPROVEMENTS.md) for the full prioritized list of GUI/UX, analysis algorithm,
+architecture, and test-coverage improvements. Items are tagged with affected files and effort estimates.
+When picking up an improvement task, read that file first and implement only the item the user specifies —
+do not batch-implement multiple items unless explicitly asked.
+
 ## Invariants — Do Not Break
 
 - Folder discovery must stay aligned with the experiment-folder layout above.
