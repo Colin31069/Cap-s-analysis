@@ -1,0 +1,26 @@
+[package]
+name = "skin-analysis-desktop"
+version = "0.1.0"
+description = "Parallel Rust/Tauri implementation of the Skin Analysis desktop app"
+authors = ["Codex"]
+edition = "2021"
+
+[lib]
+name = "skin_analysis_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+calamine = "0.26"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+tauri-plugin-fs = "2"
+
+[dev-dependencies]
+approx = "0.5"
+rust_xlsxwriter = "0.81"
+tempfile = "3"

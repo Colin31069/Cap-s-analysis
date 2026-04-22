@@ -1,0 +1,230 @@
+:root {
+  color: #2f261a;
+  background:
+    radial-gradient(circle at top left, rgba(255, 218, 170, 0.5), transparent 30%),
+    linear-gradient(140deg, #f5efe4 0%, #ebe3d2 46%, #f9f6ef 100%);
+  font-family: "Avenir Next", "Helvetica Neue", sans-serif;
+  line-height: 1.4;
+  font-weight: 400;
+  color-scheme: light;
+}
+
+html,
+body,
+#app {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  min-height: 100vh;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+.shell {
+  display: grid;
+  grid-template-columns: 340px minmax(0, 1fr);
+  min-height: 100vh;
+  gap: 20px;
+  padding: 20px;
+  box-sizing: border-box;
+}
+
+.controls,
+.workspace {
+  min-height: 0;
+}
+
+.controls {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.control-header h1,
+.card h2 {
+  margin: 0;
+}
+
+.eyebrow {
+  margin: 0 0 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 0.72rem;
+  color: #9b6a2f;
+}
+
+.subtle,
+.status {
+  margin: 0;
+}
+
+.card,
+.plot-card {
+  background: rgba(255, 252, 247, 0.82);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(150, 118, 75, 0.22);
+  border-radius: 20px;
+  box-shadow: 0 18px 35px rgba(64, 48, 23, 0.08);
+}
+
+.card {
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.path-card {
+  gap: 12px;
+}
+
+.path-row,
+.button-row,
+.actions {
+  display: flex;
+  gap: 10px;
+}
+
+.button-row button,
+.actions button {
+  flex: 1;
+}
+
+label {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #5b4530;
+}
+
+input,
+select {
+  width: 100%;
+  border: 1px solid #d3c4ad;
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: #fffdfa;
+  color: #30271c;
+  box-sizing: border-box;
+}
+
+select {
+  min-height: 124px;
+}
+
+.inline-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 500;
+}
+
+.inline-option input {
+  width: auto;
+  margin: 0;
+}
+
+.toggle-grid {
+  display: grid;
+  gap: 8px;
+}
+
+button {
+  border: none;
+  border-radius: 999px;
+  padding: 11px 16px;
+  cursor: pointer;
+  transition:
+    transform 120ms ease,
+    box-shadow 120ms ease,
+    opacity 120ms ease;
+}
+
+button:hover:enabled {
+  transform: translateY(-1px);
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.primary {
+  background: linear-gradient(135deg, #b45309, #d97706);
+  color: white;
+  box-shadow: 0 10px 20px rgba(180, 83, 9, 0.22);
+}
+
+.secondary {
+  background: #f1e6d6;
+  color: #5a4228;
+  box-shadow: 0 8px 18px rgba(82, 58, 25, 0.08);
+}
+
+.workspace {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.workspace-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.legend-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.legend-chip {
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: rgba(255, 249, 241, 0.88);
+  border: 1px solid rgba(160, 119, 69, 0.2);
+  font-size: 0.82rem;
+  color: #7b5430;
+}
+
+.status {
+  font-size: 1rem;
+}
+
+.status-error {
+  color: #b42318;
+}
+
+.plot-card {
+  padding: 18px;
+  min-height: 0;
+  flex: 1;
+}
+
+.plot-host {
+  width: 100%;
+  height: calc(100vh - 120px);
+  min-height: 520px;
+}
+
+@media (max-width: 980px) {
+  .shell {
+    grid-template-columns: 1fr;
+  }
+
+  .plot-host {
+    height: 70vh;
+    min-height: 420px;
+  }
+
+  .workspace-top {
+    flex-direction: column;
+  }
+}
