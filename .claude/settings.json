@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git mv *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(python3 -m py_compile main.py skin_analysis/*.py)",
+      "Bash(python3 -m unittest discover -q)"
+    ]
+  }
+}
