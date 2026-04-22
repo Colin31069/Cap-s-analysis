@@ -4,7 +4,7 @@ This folder contains the parallel Rust/Tauri rewrite of the existing Python desk
 
 ## Goals
 
-- Keep the Python implementation in `Python version/` stable while migration is in progress
+- Keep the Python implementation in `python-app/` stable while migration is in progress
 - Recreate the same end-user workflow with a smaller cross-platform packaging target
 - Preserve the same analysis contract and parity-test expectations as the Python version
 

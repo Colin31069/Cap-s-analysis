@@ -2,13 +2,13 @@
 
 This repository now contains two maintained desktop implementations:
 
-- Python reference app in `Python version/`
-- Rust/Tauri app in `desktop-tauri/`
+- Python reference app in `python-app/`
+- Rust/Tauri app in `tauri-app/`
 
 ## Maintenance Policy
 
-- Keep the Python version runnable from `Python version/main.py`.
-- Keep the Tauri version isolated inside `desktop-tauri/`.
+- Keep the Python version runnable from `python-app/main.py`.
+- Keep the Tauri version isolated inside `tauri-app/`.
 - Do not move or delete the current Python package while the migration is in progress.
 - Treat both versions as active products until the team explicitly retires one of them.
 
@@ -16,7 +16,7 @@ This repository now contains two maintained desktop implementations:
 
 - If a change affects user-visible behavior, update both versions in the same branch.
 - If a bug exists in both implementations, fix both implementations together.
-- If a change is specific to Tauri packaging, frontend rendering, or Rust tooling, limit it to `desktop-tauri/`.
+- If a change is specific to Tauri packaging, frontend rendering, or Rust tooling, limit it to `tauri-app/`.
 - If a change is specific to Tkinter, Matplotlib, or Python environment issues, limit it to the existing Python app.
 
 ## Shared Behavior Contract

@@ -43,3 +43,9 @@ Append-only record of AI agent changes for this workspace.
 - Summary: Added session-only timing controls for baseline duration and drug-apply search windows, auto-shortened overlapping baselines, and surfaced fallback timing warnings in the plot workflow.
 - Files: `Python version/skin_analysis/config.py`, `Python version/skin_analysis/analysis.py`, `Python version/skin_analysis/models.py`, `Python version/skin_analysis/plotting.py`, `Python version/skin_analysis/gui.py`, `Python version/tests/test_analysis.py`, `Python version/tests/test_plotting.py`, `README.md`, `CHANGELOG.md`
 - Verification: `cd "Python version" && python3 -m unittest tests.test_analysis tests.test_plotting`; `cd "Python version" && python3 -m unittest discover`; `cd "Python version" && python3 -m py_compile main.py skin_analysis/*.py`; manual spot-check with `exprimental_data/J_fin`
+
+## 2026-04-22 13:30 +08:00
+
+- Summary: Restructured repository layout — renamed folders to remove spaces and standardise naming, moved archived prototype and standalone scripts to dedicated directories, added Tauri edition section to README, updated all cross-references, and rewrote CLAUDE.md from AGENTS.md for Claude Code conventions.
+- Files: `python-app/` (was `Python version/`), `tauri-app/` (was `desktop-tauri/`), `archive/` (was `main_alalysis_old/`), `scripts/` (new), `CLAUDE.md`, `README.md`, `MIGRATION_RULES.md`, `tauri-app/README.md`, `CHANGELOG.md`
+- Verification: `cd python-app && python3 -m py_compile main.py skin_analysis/*.py`; `cd python-app && python3 -m unittest discover`

@@ -4,26 +4,38 @@
 
 Desktop application (Tkinter + Matplotlib) for browsing experiment folders, loading `.xlsx` capacitance files, analyzing drop timing, storing experiment medicine metadata, and plotting results.
 
-## Active Code
+A parallel Rust/Tauri rewrite (`tauri-app/`) is in progress but significantly lags behind the Python edition. Python is the primary active development target.
 
-`Python version/` is the active implementation. All work defaults here unless the user says otherwise.
+## Repository Layout
+
+```
+python-app/      ← active Python edition (Tkinter + Matplotlib)
+tauri-app/       ← in-progress Tauri/Rust rewrite
+shared/          ← parity cases shared between both editions
+scripts/         ← standalone one-off analysis scripts
+archive/         ← retired single-file prototype
+```
+
+## Active Code — Python Edition
+
+`python-app/` is the active implementation. All work defaults here unless the user says otherwise.
 
 | File | Purpose |
 |------|---------|
-| `Python version/main.py` | Thin launch entrypoint only |
-| `Python version/skin_analysis/config.py` | Constants and defaults |
-| `Python version/skin_analysis/filesystem.py` | Experiment folder and file discovery |
-| `Python version/skin_analysis/analysis.py` | Excel loading and signal/drop analysis |
-| `Python version/skin_analysis/metadata.py` | `.skin_analysis_metadata.json` load/validate/save |
-| `Python version/skin_analysis/models.py` | Shared dataclasses and typed payloads |
-| `Python version/skin_analysis/plotting.py` | Display transforms and plot payload assembly |
-| `Python version/skin_analysis/gui.py` | Tk widgets, dialogs, threading handoff, Matplotlib rendering |
-| `Python version/tests/` | Unit tests for non-GUI logic |
+| `python-app/main.py` | Thin launch entrypoint only |
+| `python-app/skin_analysis/config.py` | Constants and defaults |
+| `python-app/skin_analysis/filesystem.py` | Experiment folder and file discovery |
+| `python-app/skin_analysis/analysis.py` | Excel loading and signal/drop analysis |
+| `python-app/skin_analysis/metadata.py` | `.skin_analysis_metadata.json` load/validate/save |
+| `python-app/skin_analysis/models.py` | Shared dataclasses and typed payloads |
+| `python-app/skin_analysis/plotting.py` | Display transforms and plot payload assembly |
+| `python-app/skin_analysis/gui.py` | Tk widgets, dialogs, threading handoff, Matplotlib rendering |
+| `python-app/tests/` | Unit tests for non-GUI logic |
 
 ## Running and Testing
 
 ```bash
-cd "Python version"
+cd python-app
 python3 main.py
 python3 -m unittest discover
 python3 -m py_compile main.py skin_analysis/*.py
@@ -38,6 +50,16 @@ Manual GUI verification for UI changes:
 6. Confirm legends, drop lines, and export still work
 
 For macOS GUI setup, see [MACOS_GUI_FIXES.md](./MACOS_GUI_FIXES.md).
+
+## Tauri Edition
+
+`tauri-app/` is a parallel rewrite (Rust + Tauri + Svelte + Plotly.js). It lags behind the Python edition and is not yet production-ready. See [tauri-app/README.md](./tauri-app/README.md) and [MIGRATION_RULES.md](./MIGRATION_RULES.md) for sync rules between the two editions.
+
+```bash
+cd tauri-app
+npm install
+npm run tauri dev
+```
 
 ## Expected Data Shape
 
@@ -83,7 +105,7 @@ Background workers may read files and build `PlotPayload`. All Tk widget updates
 
 ## Git Workflow
 
-Only perform Git operations when the user explicitly requests them. This workspace may not always be under Git.
+Only perform Git operations when the user explicitly requests them.
 
 Branch model:
 - `main` — stable/production
