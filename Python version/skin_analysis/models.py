@@ -60,6 +60,7 @@ class PlotSettings:
     drug_apply_time_sec: float
     drug_apply_tolerance_sec: float
     baseline_warning_threshold_pct: float
+    custom_title: str = ""
 
 
 @dataclass(frozen=True)
@@ -84,3 +85,67 @@ class PlotPayload:
     title: str
     y_unit: str
     plot_items: list[PlotItem]
+
+
+@dataclass(frozen=True)
+class StatisticalSample:
+    group_name: str
+    sample_name: str
+    delta_percent: float
+    delta_capacitance: float
+    baseline: float
+    drop_time: float
+    baseline_warning_status: BaselineWarningStatus
+    drop_detection_source: DropDetectionSource
+    warnings: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class GroupStatistics:
+    group_name: str
+    n: int
+    mean: float
+    sd: float
+    sem: float
+    median: float
+    q1: float
+    q3: float
+    iqr: float
+    ci95_low: float
+    ci95_high: float
+    shapiro_statistic: float
+    shapiro_p_value: float
+    normality_note: str
+
+
+@dataclass(frozen=True)
+class VarianceCheckResult:
+    method: str
+    statistic: float
+    p_value: float
+    note: str
+
+
+@dataclass(frozen=True)
+class AnovaResult:
+    method: str
+    group_count: int
+    sample_count: int
+    statistic: float
+    df_num: float
+    df_den: float
+    p_value: float
+    eta_squared: float
+    omega_squared: float
+    note: str
+
+
+@dataclass(frozen=True)
+class StatisticalAnalysisResult:
+    root_path: str
+    samples: list[StatisticalSample]
+    group_statistics: list[GroupStatistics]
+    variance_check: VarianceCheckResult
+    anova: AnovaResult
+    warnings: tuple[str, ...]
+    scipy_available: bool

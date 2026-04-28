@@ -26,8 +26,36 @@ from .metadata import (
     metadata_file_path,
     save_experiment_metadata,
 )
-from .models import ExperimentMetadata, MedicineEntry, PlotPayload, PlotSettings
-from .plotting import build_plot_payload
+from .models import ExperimentMetadata, MedicineEntry, PlotPayload, PlotSettings, StatisticalAnalysisResult
+from .plotting import build_plot_payload, build_plot_title
+from .statistics import build_statistical_analysis, format_statistics_result, write_statistics_csv
+
+
+EXPORT_FILETYPES = (
+    ("PNG image", "*.png"),
+    ("PDF document", "*.pdf"),
+    ("SVG vector image", "*.svg"),
+    ("TIFF image", "*.tif *.tiff"),
+    ("JPEG image", "*.jpg *.jpeg"),
+    ("WebP image", "*.webp"),
+)
+SUPPORTED_EXPORT_EXTENSIONS = {
+    ".eps",
+    ".jpeg",
+    ".jpg",
+    ".pdf",
+    ".pgf",
+    ".png",
+    ".ps",
+    ".raw",
+    ".rgba",
+    ".svg",
+    ".svgz",
+    ".tif",
+    ".tiff",
+    ".webp",
+}
+DEFAULT_EXPORT_EXTENSION = ".png"
 
 
 class RawDataViewerApp(tk.Tk):
@@ -54,6 +82,7 @@ class RawDataViewerApp(tk.Tk):
         self.leg_show_base = tk.BooleanVar(value=True)
         self.leg_show_delta = tk.BooleanVar(value=False)
         self.experiment_var = tk.StringVar(value="")
+        self.custom_plot_title_var = tk.StringVar(value="")
         self.medicine_count_var = tk.StringVar(value=str(DEFAULT_MEDICINE_COUNT))
         self.medicine_name_vars = [tk.StringVar(value="") for _ in range(MAX_MEDICINES)]
         self.medicine_dose_vars = [tk.StringVar(value="") for _ in range(MAX_MEDICINES)]
@@ -67,8 +96,10 @@ class RawDataViewerApp(tk.Tk):
         self._metadata_expanded = False
         self._metadata_toggle_text = tk.StringVar(value="")
         self._warning_dialog: tk.Toplevel | None = None
+        self._last_default_plot_title = ""
 
         self.create_widgets()
+        self.custom_plot_title_var.trace_add("write", self._on_custom_plot_title_changed)
         self.refresh_folder_structure(show_errors=False)
 
     def create_widgets(self) -> None:
@@ -113,6 +144,15 @@ class RawDataViewerApp(tk.Tk):
         self.refresh_btn = ttk.Button(controls_frame, text="↻ Refresh List", command=self.refresh_folder_structure)
         self.refresh_btn.pack(fill=tk.X, pady=5)
         self._control_widgets.append(self.refresh_btn)
+
+        ttk.Label(controls_frame, text="Plot Title (optional)").pack(anchor=tk.W, pady=(8, 0))
+        self.custom_plot_title_entry = ttk.Entry(
+            controls_frame,
+            textvariable=self.custom_plot_title_var,
+        )
+        self.custom_plot_title_entry.pack(fill=tk.X, pady=(2, 0))
+        self._control_widgets.append(self.custom_plot_title_entry)
+
         ttk.Separator(controls_frame, orient="horizontal").pack(fill="x", pady=10)
 
         self.metadata_section = ttk.Frame(controls_frame)
@@ -280,6 +320,9 @@ class RawDataViewerApp(tk.Tk):
         self.export_btn = ttk.Button(controls_frame, text="Export Plot", command=self.export_plot)
         self.export_btn.pack(fill=tk.X, pady=5)
         self._control_widgets.append(self.export_btn)
+        self.statistics_btn = ttk.Button(controls_frame, text="Statistics", command=self.open_statistics_dialog)
+        self.statistics_btn.pack(fill=tk.X, pady=5)
+        self._control_widgets.append(self.statistics_btn)
 
         plot_frame = ttk.Frame(main_frame)
         plot_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
@@ -476,6 +519,7 @@ class RawDataViewerApp(tk.Tk):
 
         self._autosave_current_metadata()
         self.experiment_var.set(new_value)
+        self.custom_plot_title_var.set("")
         self._load_selected_experiment_metadata()
 
     def _on_medicine_count_changed(self, _event=None) -> None:
@@ -489,6 +533,26 @@ class RawDataViewerApp(tk.Tk):
         if self._is_loading_metadata:
             return
         self._autosave_current_metadata()
+
+    def _plot_has_data(self) -> bool:
+        return bool(self.ax.lines or self.ax.collections or self.ax.patches)
+
+    def _current_plot_title(self) -> str:
+        custom_title = self.custom_plot_title_var.get().strip()
+        if custom_title:
+            return custom_title
+        return self._last_default_plot_title
+
+    def _sync_plot_title_from_editor(self) -> None:
+        if not self._last_default_plot_title or not self._plot_has_data():
+            return
+
+        self.ax.set_title(self._current_plot_title(), fontsize=12)
+        self.fig.tight_layout()
+        self.canvas.draw_idle()
+
+    def _on_custom_plot_title_changed(self, *_args) -> None:
+        self._sync_plot_title_from_editor()
 
     def _get_analysis_timing_settings(self) -> tuple[float, float, float]:
         try:
@@ -532,6 +596,7 @@ class RawDataViewerApp(tk.Tk):
 
     def refresh_folder_structure(self, _event=None, show_errors: bool = True) -> bool:
         self._autosave_current_metadata()
+        previous_experiment = self.experiment_var.get()
 
         requested_path = self.root_path_var.get()
         normalized_path = normalize_directory_path(requested_path)
@@ -541,6 +606,7 @@ class RawDataViewerApp(tk.Tk):
             self.root_path = normalized_path
             self.root_path_var.set(normalized_path)
             self._set_list_values(self.experiment_list, self.experiment_var, [])
+            self.custom_plot_title_var.set("")
             self._clear_metadata_editor()
             if show_errors:
                 if normalized_path:
@@ -554,14 +620,18 @@ class RawDataViewerApp(tk.Tk):
         self.root_path_var.set(self.root_path)
         folders = get_subfolders(self.root_path)
         self._set_list_values(self.experiment_list, self.experiment_var, folders)
+        if self.experiment_var.get() != previous_experiment:
+            self.custom_plot_title_var.set("")
         if folders:
             self._load_selected_experiment_metadata()
         else:
+            self.custom_plot_title_var.set("")
             self._clear_metadata_editor()
         return True
 
     def clear_plot(self) -> None:
         self.ax.clear()
+        self._last_default_plot_title = ""
         self.ax.set_title("Ready", fontsize=14)
         self.ax.set_xlabel("Time from Drop (s)")
         self.ax.set_ylabel("Value")
@@ -628,6 +698,7 @@ class RawDataViewerApp(tk.Tk):
             drug_apply_time_sec=drug_apply_time_sec,
             drug_apply_tolerance_sec=drug_apply_tolerance_sec,
             baseline_warning_threshold_pct=baseline_warning_threshold_pct,
+            custom_title=self.custom_plot_title_var.get().strip(),
         )
         group_color = self._next_group_color(settings.is_overlay) if settings.use_group_color else None
 
@@ -651,7 +722,8 @@ class RawDataViewerApp(tk.Tk):
         if not settings.is_overlay:
             self.clear_plot()
 
-        self.ax.set_title(payload.title, fontsize=12)
+        self._last_default_plot_title = build_plot_title(settings.experiment_name, settings.metadata)
+        self.ax.set_title(self._current_plot_title(), fontsize=12)
         self.ax.set_xlabel("Time from Drop (s)")
         self.ax.set_ylabel(payload.y_unit)
 
@@ -776,8 +848,150 @@ class RawDataViewerApp(tk.Tk):
         warning_lines.extend(timing_lines)
         self._show_warning_dialog("Plot Warnings", warning_lines)
 
+    def open_statistics_dialog(self) -> None:
+        resolved_root = resolve_directory_path(self.root_path_var.get())
+        if resolved_root is None:
+            messagebox.showwarning("Invalid Root Path", "Please paste or choose a valid root folder.")
+            self.root_path_entry.focus_set()
+            return
+
+        self.root_path = resolved_root
+        self.root_path_var.set(resolved_root)
+        folders = get_subfolders(resolved_root)
+        if not folders:
+            messagebox.showinfo("No Groups", "No experiment folders were found under this root path.")
+            return
+
+        dialog = tk.Toplevel(self)
+        dialog.title("Statistical Analysis")
+        dialog.transient(self)
+        dialog.geometry("980x680")
+        dialog.resizable(True, True)
+
+        state: dict[str, StatisticalAnalysisResult | None] = {"result": None}
+
+        outer = ttk.Frame(dialog, padding=10)
+        outer.pack(fill=tk.BOTH, expand=True)
+
+        controls = ttk.Frame(outer)
+        controls.pack(fill=tk.X, pady=(0, 8))
+        ttk.Label(controls, text=f"Groups: {len(folders)} concentration folder(s)").pack(side=tk.LEFT)
+
+        run_btn = ttk.Button(controls, text="Run One-way ANOVA")
+        run_btn.pack(side=tk.LEFT, padx=(0, 6))
+        export_btn = ttk.Button(controls, text="Export CSV", state="disabled")
+        export_btn.pack(side=tk.LEFT, padx=(0, 6))
+        ttk.Button(controls, text="Close", command=dialog.destroy).pack(side=tk.RIGHT)
+
+        text_frame = ttk.Frame(outer)
+        text_frame.pack(fill=tk.BOTH, expand=True)
+        scrollbar = ttk.Scrollbar(text_frame, orient=tk.VERTICAL)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        text_widget = tk.Text(
+            text_frame,
+            wrap="word",
+            yscrollcommand=scrollbar.set,
+            font=("Menlo", 11),
+        )
+        text_widget.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.configure(command=text_widget.yview)
+
+        def set_text(content: str) -> None:
+            text_widget.configure(state="normal")
+            text_widget.delete("1.0", tk.END)
+            text_widget.insert("1.0", content)
+            text_widget.configure(state="disabled")
+
+        def set_running(is_running: bool) -> None:
+            run_btn.configure(state="disabled" if is_running else "normal")
+            if is_running:
+                export_btn.configure(state="disabled")
+            elif state["result"] is not None:
+                export_btn.configure(state="normal")
+
+        def apply_statistics_result(result: StatisticalAnalysisResult) -> None:
+            if not dialog.winfo_exists():
+                return
+            state["result"] = result
+            set_text(format_statistics_result(result))
+            set_running(False)
+
+        def fail_statistics(exc: Exception) -> None:
+            if not dialog.winfo_exists():
+                return
+            set_running(False)
+            messagebox.showerror("Statistics Error", f"Failed to calculate statistics.\n\n{exc}", parent=dialog)
+
+        def run_statistics() -> None:
+            try:
+                baseline_duration_sec, drug_apply_time_sec, drug_apply_tolerance_sec = self._get_analysis_timing_settings()
+                baseline_warning_threshold_pct = self._get_baseline_warning_threshold_pct()
+            except ValueError as exc:
+                messagebox.showwarning("Invalid Settings", str(exc), parent=dialog)
+                return
+
+            state["result"] = None
+            set_running(True)
+            set_text("Running statistical analysis...\n\nThis scans every direct child folder under the current root.")
+
+            def worker() -> None:
+                try:
+                    result = build_statistical_analysis(
+                        resolved_root,
+                        baseline_warning_threshold_pct=baseline_warning_threshold_pct,
+                        baseline_duration_sec=baseline_duration_sec,
+                        drug_apply_time_sec=drug_apply_time_sec,
+                        drug_apply_tolerance_sec=drug_apply_tolerance_sec,
+                    )
+                    self.after(0, lambda result=result: apply_statistics_result(result))
+                except Exception as exc:
+                    self.after(0, lambda exc=exc: fail_statistics(exc))
+
+            threading.Thread(target=worker, daemon=True).start()
+
+        def export_statistics() -> None:
+            result = state["result"]
+            if result is None:
+                messagebox.showwarning("No Results", "Run statistics before exporting.", parent=dialog)
+                return
+
+            path = filedialog.asksaveasfilename(
+                parent=dialog,
+                title="Export Statistics",
+                defaultextension=".csv",
+                filetypes=(("CSV file", "*.csv"), ("All files", "*.*")),
+            )
+            if not path:
+                return
+            if not path.lower().endswith(".csv"):
+                path = f"{path}.csv"
+            try:
+                write_statistics_csv(result, path)
+            except OSError as exc:
+                messagebox.showerror("Export Failed", f"Could not save statistics CSV.\n\n{exc}", parent=dialog)
+                return
+            messagebox.showinfo("Exported", "Statistics CSV saved successfully.", parent=dialog)
+
+        run_btn.configure(command=run_statistics)
+        export_btn.configure(command=export_statistics)
+        set_text(
+            "Run one-way ANOVA across all concentration folders under the current root.\n\n"
+            "Endpoint: Delta % = raw delta pF / each electrode baseline pF * 100.\n"
+            "Grouping: each direct child folder under the current root path is one concentration group.\n"
+            "This report includes one-way ANOVA and descriptive statistics only."
+        )
+        dialog.lift()
+        run_btn.focus_set()
+
     def export_plot(self) -> None:
-        path = filedialog.asksaveasfilename(defaultextension=".png")
+        path = filedialog.asksaveasfilename(
+            title="Export Plot",
+            defaultextension=DEFAULT_EXPORT_EXTENSION,
+            filetypes=EXPORT_FILETYPES,
+        )
         if path:
+            _, extension = os.path.splitext(path)
+            if extension.lower() not in SUPPORTED_EXPORT_EXTENSIONS:
+                path = f"{path}{DEFAULT_EXPORT_EXTENSION}"
             self.fig.savefig(path, dpi=300, bbox_inches="tight")
             messagebox.showinfo("Exported", "Saved successfully.")

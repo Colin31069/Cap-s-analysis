@@ -8,6 +8,7 @@
 - 建議在 macOS 使用 Python 3.12 以上，以降低 Tk 介面問題
 - Python 版本的程式碼放在 `Python version/`，請先 `cd` 進去再執行
 - 套件需求請參考 `Python version/requirements-gui.txt`
+- 統計檢定需要 `scipy`；若未安裝，程式仍可顯示描述統計與 ANOVA 的 F 值，但 p-value、95% CI 等推論統計會標示為不可用
 
 ## 安裝方式
 
@@ -88,6 +89,7 @@ ROOT/
    - `Raw Data (pF)`：顯示原始電容值，時間軸會以偵測到的 drop 作為 `0`
    - `Baseline Only (Raw Baseline Window)`：只顯示本次設定的 baseline 區段，但仍使用相同的相對 drop 時間軸
 6. 視需求調整 timing、圖例與視覺選項：
+   - `Plot Title (optional)`：可自訂本次繪圖標題；留空時維持預設標題，也就是實驗資料夾名稱與藥品標記資訊。已繪出的圖會在編輯時立即更新，匯出圖片也會使用目前畫面上的標題
    - `Baseline Duration (s)`：設定前面多少秒拿來做 baseline 平均；只保留在本次程式執行期間，不會寫入 metadata
    - `Drug Apply Time (s)`：設定大約在幾秒附近施加藥品
    - `Apply Window +/- (s)`：設定施藥時間上下各容許多少秒做 drop 搜尋
@@ -95,12 +97,32 @@ ROOT/
    - `Overlay Mode`：將不同實驗資料疊加在同一張圖上
    - `Experiment Color`：同一次載入的實驗使用同色，靠線型區分不同 sample
    - `Show Drop Lines`：顯示 `0` 秒位置的垂直輔助線，也就是各條曲線對齊後的 drop 參考點
-   - `Legend Customization`：控制圖例是否顯示 baseline、delta；若 baseline 品質可疑，圖例會加上 `注意` 或 `不準確`
+   - `Legend Customization`：控制圖例是否顯示 baseline、delta；疊圖且開啟 `Experiment Color` 時，圖例會優先顯示藥品/濃度摘要，沒有填 metadata 時會改用實驗資料夾名稱；若 baseline 品質可疑，圖例會加上 `注意` 或 `不準確`
 7. 點選 `LOAD & PLOT` 載入並繪圖。
 8. 如果 baseline 視窗和施藥搜尋區間重疊，程式會自動縮短 baseline 視窗；如果在指定的施藥時間區間內沒有找到明顯反應點，程式會警告後退回自動搜尋。
 9. 如果某些檔案的 baseline 視窗尾端偏移過大，或在 baseline 期間就出現連續上升，程式會跳出警示視窗列出受影響的 sample，供使用者自行判斷是否接受這筆實驗資料。
-10. 圖表標題會顯示實驗資料夾名稱與藥品標記資訊。
+10. 圖表標題會使用 `Plot Title (optional)` 的內容；若留空，會顯示實驗資料夾名稱與藥品標記資訊。
 11. 需要輸出圖片時，點選 `Export Plot` 儲存成 `.png`。
+
+## 統計分析
+
+點選左側 `Statistics` 可針對目前 `Root Path` 底下所有直接子資料夾進行統計分析。這個功能把每個子資料夾視為一個濃度組，資料夾名稱就是濃度標籤；每個 `.xlsx` 檔案視為一片獨立電極片。
+
+目前主要 endpoint 是 `Delta %`：
+
+```text
+Delta % = raw delta pF / 該電極片自己的 baseline pF * 100
+```
+
+統計視窗會直接對所有濃度組執行 one-way ANOVA，並輸出：
+
+- 每個濃度組的 `n`、mean、SD、SEM、median、IQR、95% CI
+- one-way ANOVA 的 F 值、自由度與 p-value
+- ANOVA effect size：eta-squared 與 omega-squared
+- Shapiro-Wilk normality check 與 Brown-Forsythe variance check
+- 每片電極片的 Delta % 明細與資料品質警示
+
+結果可以從統計視窗匯出為 `.csv`。如果某組樣本數太少，例如 `n < 2` 或 `n < 3`，視窗會列出警示並略過不適合的推論檢定。這版只包含 one-way ANOVA，不包含兩兩比較或事後比較。
 
 ## 測試與驗證
 

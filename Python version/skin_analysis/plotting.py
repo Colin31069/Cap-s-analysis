@@ -61,6 +61,27 @@ def warning_status_suffix(status: BaselineWarningStatus) -> str:
     return ""
 
 
+def build_medicine_legend_summary(metadata: ExperimentMetadata) -> str:
+    parts: list[str] = []
+    for entry in metadata.medicines[: metadata.medicine_count]:
+        name = entry.name.strip()
+        dose = entry.dose.strip()
+        if name and dose:
+            parts.append(f"{name} {dose}")
+        elif name:
+            parts.append(name)
+        elif dose:
+            parts.append(dose)
+    return " / ".join(parts)
+
+
+def build_overlay_legend_group_label(settings: PlotSettings) -> str:
+    medicine_summary = build_medicine_legend_summary(settings.metadata)
+    if medicine_summary:
+        return medicine_summary
+    return settings.experiment_name.strip()
+
+
 def build_legend_label(
     sample_name: str,
     settings: PlotSettings,
@@ -69,6 +90,10 @@ def build_legend_label(
     warning_status: BaselineWarningStatus,
 ) -> str:
     prefix = f"N {sample_name}{warning_status_suffix(warning_status)}"
+    group_label = build_overlay_legend_group_label(settings)
+    if settings.is_overlay and settings.use_group_color and group_label:
+        prefix = f"{group_label} - {prefix}"
+
     if settings.leg_style == "Simple":
         return prefix
 
@@ -83,7 +108,15 @@ def build_legend_label(
     return prefix
 
 
-def build_plot_title(experiment_name: str, metadata: ExperimentMetadata) -> str:
+def build_plot_title(
+    experiment_name: str,
+    metadata: ExperimentMetadata,
+    custom_title: str = "",
+) -> str:
+    custom_title = custom_title.strip()
+    if custom_title:
+        return custom_title
+
     title_parts = [experiment_name]
     for entry in metadata.medicines[: metadata.medicine_count]:
         name = entry.name.strip()
@@ -153,7 +186,7 @@ def build_plot_payload(settings: PlotSettings, group_color: Any | None) -> PlotP
 
     return PlotPayload(
         settings=settings,
-        title=build_plot_title(settings.experiment_name, settings.metadata),
+        title=build_plot_title(settings.experiment_name, settings.metadata, settings.custom_title),
         y_unit=display_mode_to_y_unit(settings.display_mode),
         plot_items=plot_items,
     )

@@ -7,6 +7,8 @@ import numpy as np
 from skin_analysis.models import ExperimentMetadata, MedicineEntry, PlotSettings, ProcessedSignal
 from skin_analysis.plotting import (
     build_legend_label,
+    build_medicine_legend_summary,
+    build_overlay_legend_group_label,
     build_plot_item,
     build_plot_title,
     display_mode_to_y_unit,
@@ -76,6 +78,33 @@ class PlottingTests(unittest.TestCase):
         label = build_legend_label("3", settings, 10.0, "Δ:2.50pF", "ok")
         self.assertEqual(label, "N 3 (Base:10.00 pF, Δ:2.50pF)")
 
+    def test_overlay_group_color_legend_includes_medicine_summary(self) -> None:
+        settings = make_settings(is_overlay=True, use_group_color=True)
+        label = build_legend_label("3", settings, 10.0, "Δ:2.50pF", "ok")
+        self.assertEqual(label, "lanolin 1% 5mL / plastik 70 1.5uL - N 3 (Base:10.00 pF)")
+
+    def test_overlay_legend_does_not_add_medicine_summary_without_group_color(self) -> None:
+        settings = make_settings(is_overlay=True, use_group_color=False)
+        label = build_legend_label("3", settings, 10.0, "Δ:2.50pF", "ok")
+        self.assertEqual(label, "N 3 (Base:10.00 pF)")
+
+    def test_overlay_group_color_legend_falls_back_to_experiment_name(self) -> None:
+        metadata = ExperimentMetadata(
+            medicine_count=2,
+            medicines=[
+                MedicineEntry(name="", dose=""),
+                MedicineEntry(name="", dose=""),
+            ],
+        )
+        settings = make_settings(
+            experiment_name="TrialA_0.5pct",
+            metadata=metadata,
+            is_overlay=True,
+            use_group_color=True,
+        )
+        label = build_legend_label("3", settings, 10.0, "Δ:2.50pF", "ok")
+        self.assertEqual(label, "TrialA_0.5pct - N 3 (Base:10.00 pF)")
+
     def test_legend_suffix_marks_warning_files(self) -> None:
         settings = make_settings(leg_style="Simple")
         label = build_legend_label("3", settings, 10.0, "Δ:2.50pF", "warning")
@@ -103,6 +132,25 @@ class PlottingTests(unittest.TestCase):
     def test_build_plot_title_uses_experiment_name_when_count_is_zero(self) -> None:
         metadata = ExperimentMetadata(medicine_count=0, medicines=[])
         self.assertEqual(build_plot_title("TrialA", metadata), "TrialA")
+
+    def test_build_plot_title_uses_custom_title_when_provided(self) -> None:
+        title = build_plot_title("TrialA", make_settings().metadata, "  My Figure 1  ")
+        self.assertEqual(title, "My Figure 1")
+
+    def test_build_medicine_legend_summary_handles_partial_entries(self) -> None:
+        metadata = ExperimentMetadata(
+            medicine_count=3,
+            medicines=[
+                MedicineEntry(name="lanolin", dose="1%"),
+                MedicineEntry(name="", dose="2uL"),
+                MedicineEntry(name="water", dose=""),
+            ],
+        )
+        self.assertEqual(build_medicine_legend_summary(metadata), "lanolin 1% / 2uL / water")
+
+    def test_build_overlay_legend_group_label_prefers_metadata_over_folder_name(self) -> None:
+        settings = make_settings(experiment_name="TrialA_0.5pct")
+        self.assertEqual(build_overlay_legend_group_label(settings), "lanolin 1% 5mL / plastik 70 1.5uL")
 
     def test_transform_signal_for_normalized_mode(self) -> None:
         x_plot, y_plot, delta_str = transform_signal_for_display(make_signal(), "Norm")
