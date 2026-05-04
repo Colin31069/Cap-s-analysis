@@ -97,3 +97,15 @@ Append-only record of AI agent changes for this workspace.
 - Summary: Simplified the statistics workflow to one-way ANOVA only by removing control-group selection, pairwise comparisons, Welch t-test outputs, Holm adjustment, and related report sections.
 - Files: `Python version/skin_analysis/models.py`, `Python version/skin_analysis/statistics.py`, `Python version/skin_analysis/gui.py`, `Python version/tests/test_statistics.py`, `README.md`, `ANALYSIS_METHOD.md`, `CHANGELOG.md`
 - Verification: `cd "Python version" && python3 -m py_compile main.py skin_analysis/*.py` (pass in global Python); `cd "Python version" && python3 -m unittest tests.test_statistics` (fails in global Python because NumPy 2.4.4 is paired with older pandas 2.0.3); `cd "Python version" && .venv-gui/bin/python -m py_compile main.py skin_analysis/*.py` (pass; venv emitted existing distutils `.pth` warnings); `cd "Python version" && .venv-gui/bin/python -m unittest tests.test_statistics` (pass; Matplotlib warned about using a temporary cache directory); `cd "Python version" && .venv-gui/bin/python -m unittest discover` (pass; Matplotlib warned about using a temporary cache directory); `git diff --check` (pass)
+
+## 2026-05-04 19:36 +08:00
+
+- Summary: Made the Python launcher recover from dependency mismatches when possible, block the macOS 15 + Python 3.11 Tk crash path before AppKit aborts, and document the required Python 3.12+ GUI runtime.
+- Files: `Python version/main.py`, `Python version/skin_analysis/launcher.py`, `Python version/setup_macos_gui_env.sh`, `README.md`, `MACOS_GUI_FIXES.md`, `CHANGELOG.md`
+- Verification: `cd "Python version" && python3 main.py` (blocked safely with Python 3.12+ instructions instead of crashing); `cd "Python version" && ./setup_macos_gui_env.sh` (blocked safely because only Python 3.11 is installed on macOS 15.7.4); `cd "Python version" && python3 -m py_compile main.py skin_analysis/*.py` (pass); `cd "Python version" && .venv-gui/bin/python -m unittest discover` (pass; existing `.pth` and Matplotlib cache warnings)
+
+## 2026-05-04 19:59 +08:00
+
+- Summary: Added missing Tkinter detection for Homebrew Python 3.13, updated setup guidance to require the matching `python-tk@3.13` package, and pointed Matplotlib cache writes at a writable temp directory.
+- Files: `Python version/skin_analysis/__init__.py`, `Python version/skin_analysis/launcher.py`, `Python version/setup_macos_gui_env.sh`, `README.md`, `MACOS_GUI_FIXES.md`, `CHANGELOG.md`
+- Verification: `brew install python-tk@3.13` (installed `python-tk@3.13`, `tcl-tk`, and `libtommath`); `cd "Python version" && rm -rf .venv-gui && ./setup_macos_gui_env.sh` (rebuilt Python 3.13 GUI environment); `cd "Python version" && ./.venv-gui/bin/python -c 'import tkinter; print(tkinter.TkVersion)'` (Tk 9.0); `cd "Python version" && ./.venv-gui/bin/python -m py_compile main.py skin_analysis/*.py` (pass); `cd "Python version" && ./.venv-gui/bin/python -m unittest discover` (pass); `cd "Python version" && ./.venv-gui/bin/python -c 'import tkinter; from skin_analysis.gui import RawDataViewerApp; print("gui import ok")'` (pass); `git diff --check` (pass)

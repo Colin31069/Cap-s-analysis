@@ -8,7 +8,7 @@ This project uses `tkinter` + `ttk` + embedded `matplotlib` (`TkAgg`). On macOS,
 
 ## Recommended setup
 
-1. Install a newer Python on macOS, preferably Python 3.12 or newer.
+1. Install a newer Python on macOS, preferably Python 3.12 or newer. On macOS 15+, use Python 3.12 or 3.13 because Python 3.11 Tk builds can crash before the app opens. If using Homebrew Python 3.13, also install `python-tk@3.13`.
 2. Create a dedicated GUI environment:
 
 ```bash

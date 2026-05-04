@@ -31,6 +31,14 @@ chmod +x ./setup_macos_gui_env.sh
 source ./.venv-gui/bin/activate
 ```
 
+macOS 15 以上請使用 Python 3.12 或 3.13 建立 GUI 環境；Python 3.11 的 Tk runtime 可能在開啟視窗前直接觸發 macOS crash report。
+
+如果使用 Homebrew Python 3.13，請先確認有安裝 Tk：
+
+```bash
+brew install python-tk@3.13
+```
+
 如果你在 macOS 遇到下拉選單、勾選框或焦點問題，請另外閱讀 [MACOS_GUI_FIXES.md](./MACOS_GUI_FIXES.md)。
 
 ## 啟動方式
@@ -38,6 +46,13 @@ source ./.venv-gui/bin/activate
 ```bash
 cd "Python version"
 python3 main.py
+```
+
+如果已建立 macOS GUI 環境，`python3 main.py` 會在偵測到全域 NumPy/Matplotlib ABI 不相容時，自動改用 `./.venv-gui/bin/python` 重新啟動。也可以直接使用：
+
+```bash
+cd "Python version"
+./.venv-gui/bin/python main.py
 ```
 
 ## 資料夾結構

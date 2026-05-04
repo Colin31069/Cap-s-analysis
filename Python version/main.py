@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-from skin_analysis.gui import RawDataViewerApp
+from skin_analysis.launcher import run
 
 
 def main() -> None:
-    app = RawDataViewerApp()
-    app.mainloop()
+    run()
 
 
 if __name__ == "__main__":

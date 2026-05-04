@@ -24,9 +24,24 @@ fi
 PYTHON_VERSION="$("${PYTHON_BIN}" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
 echo "Using ${PYTHON_BIN} (${PYTHON_VERSION})"
 
-if [[ "${PYTHON_VERSION}" < "3.12" ]]; then
+MACOS_VERSION="$(sw_vers -productVersion 2>/dev/null || true)"
+MACOS_MAJOR="${MACOS_VERSION%%.*}"
+
+if [[ "${MACOS_MAJOR}" =~ ^[0-9]+$ ]] && (( MACOS_MAJOR >= 15 )) && [[ "${PYTHON_VERSION}" < "3.12" ]]; then
+  echo "Python ${PYTHON_VERSION} is not supported for this GUI on macOS ${MACOS_VERSION}."
+  echo "Install Python 3.12 or 3.13, then rerun this script."
+  exit 1
+elif [[ "${PYTHON_VERSION}" < "3.12" ]]; then
   echo "Warning: Python ${PYTHON_VERSION} is older than the recommended 3.12+."
   echo "You can still create the venv, but Tk/macOS issues may persist."
+fi
+
+if ! "${PYTHON_BIN}" -c 'import tkinter' >/dev/null 2>&1; then
+  echo "${PYTHON_BIN} does not include Tkinter support."
+  echo "If this is Homebrew Python ${PYTHON_VERSION}, install the matching Tk package:"
+  echo "  brew install python-tk@${PYTHON_VERSION}"
+  echo "Then rerun this script."
+  exit 1
 fi
 
 "${PYTHON_BIN}" -m venv "${VENV_DIR}"
