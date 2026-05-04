@@ -8,12 +8,14 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from skin_analysis.models import ProcessedSignal, StatisticalSample
+from skin_analysis.metadata import save_experiment_metadata
+from skin_analysis.models import ExcludedSample, ExperimentMetadata, MedicineEntry, ProcessedSignal, StatisticalSample
 from skin_analysis.statistics import (
     SCIPY_AVAILABLE,
     analyze_delta_percent_samples,
     collect_delta_percent_samples,
     delta_percent_from_signal,
+    format_statistics_result,
     statistics_result_to_csv_rows,
     summarize_group,
 )
@@ -119,7 +121,7 @@ class StatisticsTests(unittest.TestCase):
             )
             pd.DataFrame({"wrong": [1, 2, 3]}).to_excel(treatment / "bad.xlsx", index=False)
 
-            samples, warnings = collect_delta_percent_samples(
+            samples, warnings, _excluded_samples, _group_names = collect_delta_percent_samples(
                 tmp_dir,
                 baseline_duration_sec=5.0,
                 drug_apply_time_sec=10.0,
@@ -130,6 +132,51 @@ class StatisticsTests(unittest.TestCase):
         self.assertAlmostEqual(samples[0].delta_percent, 20.0)
         self.assertAlmostEqual(samples[1].delta_percent, 50.0)
         self.assertTrue(any("bad.xlsx could not be analyzed" in warning for warning in warnings))
+
+    def test_collect_delta_percent_samples_skips_metadata_exclusions(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            group = root / "1pct"
+            group.mkdir()
+
+            for index in range(1, 6):
+                pd.DataFrame({"pF - Plot 0": np.concatenate([np.full(50, 10.0), np.full(120, 12.0)])}).to_excel(
+                    group / f"{index}.xlsx",
+                    index=False,
+                )
+
+            save_experiment_metadata(
+                str(group),
+                ExperimentMetadata(
+                    medicine_count=1,
+                    medicines=[MedicineEntry(name="", dose="")],
+                    excluded_samples=[ExcludedSample(file_name="3.xlsx", reason="bad contact")],
+                ),
+            )
+
+            samples, warnings, excluded_samples, group_names = collect_delta_percent_samples(
+                tmp_dir,
+                baseline_duration_sec=5.0,
+                drug_apply_time_sec=10.0,
+                drug_apply_tolerance_sec=1.0,
+            )
+
+        self.assertEqual([sample.sample_name for sample in samples], ["1", "2", "4", "5"])
+        self.assertEqual(len(excluded_samples), 1)
+        self.assertEqual(excluded_samples[0].group_name, "1pct")
+        self.assertEqual(excluded_samples[0].file_name, "3.xlsx")
+        self.assertEqual(excluded_samples[0].reason, "bad contact")
+        self.assertEqual(group_names, ["1pct"])
+        self.assertEqual(warnings, ())
+
+        result = analyze_delta_percent_samples(
+            samples,
+            group_names=group_names,
+            excluded_samples=excluded_samples,
+        )
+        self.assertEqual(result.group_statistics[0].n, 4)
+        self.assertIn("1pct/3.xlsx: bad contact", format_statistics_result(result))
+        self.assertIn(["1pct", "3.xlsx", "bad contact"], statistics_result_to_csv_rows(result))
 
     def test_statistics_result_to_csv_rows_contains_export_sections(self) -> None:
         result = analyze_delta_percent_samples(

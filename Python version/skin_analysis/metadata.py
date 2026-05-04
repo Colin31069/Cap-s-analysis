@@ -4,7 +4,7 @@ import json
 import os
 
 from .config import DEFAULT_MEDICINE_COUNT, MAX_MEDICINES, METADATA_FILENAME
-from .models import ExperimentMetadata, MedicineEntry
+from .models import ExcludedSample, ExperimentMetadata, MedicineEntry
 
 
 def metadata_file_path(folder_path: str) -> str:
@@ -15,6 +15,7 @@ def default_experiment_metadata() -> ExperimentMetadata:
     return ExperimentMetadata(
         medicine_count=DEFAULT_MEDICINE_COUNT,
         medicines=[MedicineEntry(name="", dose="") for _ in range(DEFAULT_MEDICINE_COUNT)],
+        excluded_samples=[],
     )
 
 
@@ -24,11 +25,14 @@ def _normalize_metadata(raw_data: object) -> ExperimentMetadata:
 
     medicine_count = raw_data.get("medicine_count", DEFAULT_MEDICINE_COUNT)
     medicines = raw_data.get("medicines", [])
+    excluded_samples = raw_data.get("excluded_samples", [])
 
     if not isinstance(medicine_count, int):
         raise ValueError("medicine_count must be an integer.")
     if not isinstance(medicines, list):
         raise ValueError("medicines must be a list.")
+    if not isinstance(excluded_samples, list):
+        raise ValueError("excluded_samples must be a list.")
 
     medicine_count = max(0, min(MAX_MEDICINES, medicine_count))
 
@@ -46,7 +50,37 @@ def _normalize_metadata(raw_data: object) -> ExperimentMetadata:
     while len(entries) < medicine_count:
         entries.append(MedicineEntry(name="", dose=""))
 
-    return ExperimentMetadata(medicine_count=medicine_count, medicines=entries)
+    excluded_entries: list[ExcludedSample] = []
+    excluded_keys: dict[str, int] = {}
+    for item in excluded_samples:
+        if not isinstance(item, dict):
+            raise ValueError("Each excluded sample entry must be an object.")
+
+        file_name = item.get("file_name", "")
+        reason = item.get("reason", "")
+        if not isinstance(file_name, str) or not isinstance(reason, str):
+            raise ValueError("Excluded sample file_name and reason must be strings.")
+
+        normalized_file_name = os.path.basename(file_name.strip())
+        if not normalized_file_name:
+            continue
+
+        entry = ExcludedSample(file_name=normalized_file_name, reason=reason.strip())
+        key = normalized_file_name.casefold()
+        if key in excluded_keys:
+            existing_index = excluded_keys[key]
+            if not excluded_entries[existing_index].reason and entry.reason:
+                excluded_entries[existing_index] = entry
+            continue
+
+        excluded_keys[key] = len(excluded_entries)
+        excluded_entries.append(entry)
+
+    return ExperimentMetadata(
+        medicine_count=medicine_count,
+        medicines=entries,
+        excluded_samples=excluded_entries,
+    )
 
 
 def load_experiment_metadata(folder_path: str) -> tuple[ExperimentMetadata, str | None]:
@@ -72,6 +106,14 @@ def save_experiment_metadata(folder_path: str, metadata: ExperimentMetadata) -> 
     payload = {
         "medicine_count": medicine_count,
         "medicines": [{"name": entry.name.strip(), "dose": entry.dose.strip()} for entry in medicines],
+        "excluded_samples": [
+            {
+                "file_name": os.path.basename(entry.file_name.strip()),
+                "reason": entry.reason.strip(),
+            }
+            for entry in metadata.excluded_samples
+            if os.path.basename(entry.file_name.strip())
+        ],
     }
 
     with open(path, "w", encoding="utf-8") as file_obj:

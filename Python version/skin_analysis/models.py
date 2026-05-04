@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Literal
 
 import numpy as np
@@ -18,9 +18,16 @@ class MedicineEntry:
 
 
 @dataclass(frozen=True)
+class ExcludedSample:
+    file_name: str
+    reason: str = ""
+
+
+@dataclass(frozen=True)
 class ExperimentMetadata:
     medicine_count: int
     medicines: list[MedicineEntry]
+    excluded_samples: list[ExcludedSample] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -101,6 +108,13 @@ class StatisticalSample:
 
 
 @dataclass(frozen=True)
+class StatisticalExclusion:
+    group_name: str
+    file_name: str
+    reason: str
+
+
+@dataclass(frozen=True)
 class GroupStatistics:
     group_name: str
     n: int
@@ -149,3 +163,4 @@ class StatisticalAnalysisResult:
     anova: AnovaResult
     warnings: tuple[str, ...]
     scipy_available: bool
+    excluded_samples: list[StatisticalExclusion] = field(default_factory=list)

@@ -77,7 +77,7 @@ ROOT/
 - 使用者可以設定本次實驗加入幾種藥品，範圍是 `0` 到 `5`
 - 每種藥品都有兩個自由輸入欄位：`Name` 與 `Dose`
 - `Medicine Metadata` 預設收合，需要時再展開編輯
-- 這些標記會自動保存到該實驗資料夾內的 `.skin_analysis_metadata.json`
+- 藥品標記與手動 sample 排除清單會自動保存到該實驗資料夾內的 `.skin_analysis_metadata.json`
 - 如果 JSON 不存在，程式會自動建立預設內容
 - 如果 JSON 損壞或格式不正確，程式會回到預設 1 列空白欄位並提示使用者
 
@@ -89,6 +89,9 @@ ROOT/
   "medicines": [
     {"name": "lanolin", "dose": "1% 5mL"},
     {"name": "plastik 70", "dose": "1.5uL"}
+  ],
+  "excluded_samples": [
+    {"file_name": "3.xlsx", "reason": "baseline drift"}
   ]
 }
 ```
@@ -99,12 +102,14 @@ ROOT/
 2. 按下 `Enter` 或 `Refresh List` 重新載入 `Experiment Folder` 清單。
 3. 從清單選擇目標 `Experiment Folder`。
 4. 視需要展開 `Medicine Metadata`，設定藥品數量並填入每種藥品的名稱與劑量。
-5. 視需求選擇顯示模式：
+5. 視需要在 `Sample Exclusion` 選擇要踢除的 `.xlsx` sample，按 `Exclude Selected` 並輸入可選原因；按 `Restore Selected` 可恢復納入分析。
+6. 視需求選擇顯示模式：
    - `Normalized (%)`：以每個檔案各自 baseline 視窗平均值為 100% 顯示相對變化，時間軸會以偵測到的 drop 作為 `0`
    - `Raw Data (pF)`：顯示原始電容值，時間軸會以偵測到的 drop 作為 `0`
    - `Baseline Only (Raw Baseline Window)`：只顯示本次設定的 baseline 區段，但仍使用相同的相對 drop 時間軸
-6. 視需求調整 timing、圖例與視覺選項：
+7. 視需求調整 timing、圖例與視覺選項：
    - `Plot Title (optional)`：可自訂本次繪圖標題；留空時維持預設標題，也就是實驗資料夾名稱與藥品標記資訊。已繪出的圖會在編輯時立即更新，匯出圖片也會使用目前畫面上的標題
+   - `Sample Exclusion`：手動排除明確有問題的 sample，不會刪除原始 `.xlsx`。規則是 `n < 5` 禁止排除；`n >= 5` 最多可排除 `floor(n / 5)` 筆，例如 `n=5-9` 最多 1 筆、`n=10-14` 最多 2 筆
    - `Baseline Duration (s)`：設定前面多少秒拿來做 baseline 平均；只保留在本次程式執行期間，不會寫入 metadata
    - `Drug Apply Time (s)`：設定大約在幾秒附近施加藥品
    - `Apply Window +/- (s)`：設定施藥時間上下各容許多少秒做 drop 搜尋
@@ -113,11 +118,24 @@ ROOT/
    - `Experiment Color`：同一次載入的實驗使用同色，靠線型區分不同 sample
    - `Show Drop Lines`：顯示 `0` 秒位置的垂直輔助線，也就是各條曲線對齊後的 drop 參考點
    - `Legend Customization`：控制圖例是否顯示 baseline、delta；疊圖且開啟 `Experiment Color` 時，圖例會優先顯示藥品/濃度摘要，沒有填 metadata 時會改用實驗資料夾名稱；若 baseline 品質可疑，圖例會加上 `注意` 或 `不準確`
-7. 點選 `LOAD & PLOT` 載入並繪圖。
-8. 如果 baseline 視窗和施藥搜尋區間重疊，程式會自動縮短 baseline 視窗；如果在指定的施藥時間區間內沒有找到明顯反應點，程式會警告後退回自動搜尋。
-9. 如果某些檔案的 baseline 視窗尾端偏移過大，或在 baseline 期間就出現連續上升，程式會跳出警示視窗列出受影響的 sample，供使用者自行判斷是否接受這筆實驗資料。
-10. 圖表標題會使用 `Plot Title (optional)` 的內容；若留空，會顯示實驗資料夾名稱與藥品標記資訊。
-11. 需要輸出圖片時，點選 `Export Plot` 儲存成 `.png`。
+8. 點選 `LOAD & PLOT` 載入並繪圖。
+9. 如果 baseline 視窗和施藥搜尋區間重疊，程式會自動縮短 baseline 視窗；如果在指定的施藥時間區間內沒有找到明顯反應點，程式會警告後退回自動搜尋。
+10. 如果某些檔案的 baseline 視窗尾端偏移過大，或在 baseline 期間就出現連續上升，程式會跳出警示視窗列出受影響的 sample，供使用者自行判斷是否接受這筆實驗資料。
+11. 圖表標題會使用 `Plot Title (optional)` 的內容；若留空，會顯示實驗資料夾名稱與藥品標記資訊。
+12. 需要輸出圖片時，點選 `Export Plot` 儲存成 `.png`。
+
+## 手動踢除 sample
+
+`Sample Exclusion` 是人工資料品質決策，不是自動 outlier detection。被踢除的 `.xlsx` 不會被刪除，只會在目前工具的繪圖、`Delta %` 統計、ANOVA 與 CSV 匯出中排除；metadata 會保留檔名與原因。
+
+此工具採用固定上限作為保護欄：
+
+```text
+n < 5: 0
+n >= 5: floor(n / 5)
+```
+
+例如 `n=10` 最多可踢除 2 筆。這個設計是為了符合實驗紀錄習慣：排除標準應預先定義、逐組回報排除資料與實際 n，而不是事後任意移除。參考：[ARRIVE inclusion/exclusion criteria](https://arriveguidelines.org/arrive-guidelines/inclusion-and-exclusion-criteria/3a/explanation)、[ARRIVE reporting exclusions](https://arriveguidelines.org/arrive-guidelines/inclusion-and-exclusion-criteria/3b/explanation)、[ARRIVE exact n](https://arriveguidelines.org/arrive-guidelines/inclusion-and-exclusion-criteria/3c/explanation)、[GraphPad outlier guide](https://www.graphpad.com/guides/prism/8/statistics/stat_how_to_removing_outliers.htm)、[GraphPad ROUT method](https://www.graphpad.com/guides/prism/latest/statistics/stat_how_it_works_rout_method.htm)、[NIST generalized ESD](https://www.itl.nist.gov/div898/handbook/eda/section3/eda35h3.htm)。
 
 ## 統計分析
 
@@ -132,6 +150,7 @@ Delta % = raw delta pF / 該電極片自己的 baseline pF * 100
 統計視窗會直接對所有濃度組執行 one-way ANOVA，並輸出：
 
 - 每個濃度組的 `n`、mean、SD、SEM、median、IQR、95% CI
+- 每組被手動踢除的 sample 檔名與原因；描述統計中的 `n` 是排除後納入分析的數量
 - one-way ANOVA 的 F 值、自由度與 p-value
 - ANOVA effect size：eta-squared 與 omega-squared
 - Shapiro-Wilk normality check 與 Brown-Forsythe variance check

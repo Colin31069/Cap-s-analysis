@@ -1,15 +1,17 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
 import numpy as np
 
-from skin_analysis.models import ExperimentMetadata, MedicineEntry, PlotSettings, ProcessedSignal
+from skin_analysis.models import ExcludedSample, ExperimentMetadata, MedicineEntry, PlotSettings, ProcessedSignal
 from skin_analysis.plotting import (
     build_legend_label,
     build_medicine_legend_summary,
     build_overlay_legend_group_label,
     build_plot_item,
+    build_plot_payload,
     build_plot_title,
     display_mode_to_y_unit,
     transform_signal_for_display,
@@ -200,6 +202,23 @@ class PlottingTests(unittest.TestCase):
         self.assertEqual(item.timing_warning_details, ("Baseline shortened from 20.0s to 10.0s.",))
         self.assertEqual(item.drop_detection_source, "fallback_auto")
         self.assertAlmostEqual(item.effective_baseline_duration_sec, 0.2)
+
+    def test_build_plot_payload_skips_excluded_files(self) -> None:
+        metadata = ExperimentMetadata(
+            medicine_count=1,
+            medicines=[MedicineEntry(name="", dose="")],
+            excluded_samples=[ExcludedSample(file_name="2.xlsx", reason="baseline drift")],
+        )
+        settings = make_settings(
+            all_files=["1.xlsx", "2.xlsx", "3.xlsx", "4.xlsx", "5.xlsx"],
+            metadata=metadata,
+        )
+
+        with patch("skin_analysis.plotting.process_single_file", return_value=make_signal()) as mocked_process:
+            payload = build_plot_payload(settings, group_color=None)
+
+        self.assertEqual([item.sample_name for item in payload.plot_items], ["1", "3", "4", "5"])
+        self.assertFalse(any("2.xlsx" in call_args.args[0] for call_args in mocked_process.call_args_list))
 
     def test_display_mode_to_y_unit(self) -> None:
         self.assertEqual(display_mode_to_y_unit("Norm"), "Normalized (%)")

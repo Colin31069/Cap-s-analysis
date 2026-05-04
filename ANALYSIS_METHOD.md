@@ -36,6 +36,8 @@ ROOT/
 
 如果檔案無法讀取、沒有這個欄位，或資料是空的，該檔案會被略過，不會進入繪圖。
 
+每組實驗資料夾也可以在 `.skin_analysis_metadata.json` 中保存人工踢除清單。清單只記錄 `.xlsx` 檔名與原因，不會刪除或改名原始檔案。
+
 ## 時間軸假設
 
 程式目前假設資料點的取樣間隔是 `0.1` 秒。也就是說：
@@ -158,6 +160,28 @@ normalized value = 原始電容 / baseline 平均電容 * 100
 
 在圖例中，可疑資料會加上 `[注意]` 或 `[不準確]`。程式也會跳出警示視窗列出受影響的 sample 與原因。
 
+## 手動踢除 sample
+
+工具支援由使用者人工選定要排除的 `.xlsx` sample。這個功能只會讓該檔案不進入繪圖與統計分析，不會修改原始 Excel 檔。
+
+排除上限依目前實驗資料夾中的 `.xlsx` 數量決定：
+
+```text
+n < 5: 0
+n >= 5: floor(n / 5)
+```
+
+例如 `n=5` 到 `n=9` 最多可排除 1 筆，`n=10` 到 `n=14` 最多可排除 2 筆。這個上限是人工品質判斷的保護欄，不代表程式自動判定 outlier。
+
+採用這個設計的原因是，多數正式報告規範會要求事先定義排除標準，並回報每組實際排除的資料與最後分析的 `n`。ARRIVE guideline 要求說明 inclusion/exclusion criteria、逐組回報未納入分析的資料點及原因，並回報每組確切 `n`；GraphPad Prism 說明 outlier identification 沒有單一通用標準，Grubbs 偏向單一 outlier，ROUT 才支援多筆；NIST generalized ESD 也要求先指定最多可能 outlier 數量。參考來源：
+
+- ARRIVE 3a: https://arriveguidelines.org/arrive-guidelines/inclusion-and-exclusion-criteria/3a/explanation
+- ARRIVE 3b: https://arriveguidelines.org/arrive-guidelines/inclusion-and-exclusion-criteria/3b/explanation
+- ARRIVE 3c: https://arriveguidelines.org/arrive-guidelines/inclusion-and-exclusion-criteria/3c/explanation
+- GraphPad outlier guide: https://www.graphpad.com/guides/prism/8/statistics/stat_how_to_removing_outliers.htm
+- GraphPad ROUT method: https://www.graphpad.com/guides/prism/latest/statistics/stat_how_it_works_rout_method.htm
+- NIST generalized ESD: https://www.itl.nist.gov/div898/handbook/eda/section3/eda35h3.htm
+
 ## 圖例與標題
 
 每條曲線的 sample 名稱來自 Excel 檔名，不包含副檔名。例如 `1.xlsx` 會顯示為 `N 1`。
@@ -185,6 +209,8 @@ Delta % = delta pF / baseline pF * 100
 ```
 
 統計視窗會掃描目前 root path 底下的所有直接子資料夾。每個子資料夾會被視為一個濃度組，資料夾名稱就是濃度標籤。
+
+手動踢除的 sample 不會進入 `Delta %`、描述統計或 one-way ANOVA。統計視窗與 CSV 會列出被排除的檔名與原因；描述統計中的 `n` 是排除後實際納入分析的 sample 數。
 
 每個濃度組會列出描述統計：
 

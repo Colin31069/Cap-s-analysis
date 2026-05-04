@@ -8,6 +8,7 @@ import numpy as np
 
 from .analysis import process_single_file
 from .config import LINE_STYLE_CYCLE
+from .exclusions import current_excluded_file_names
 from .models import BaselineWarningStatus, ExperimentMetadata, PlotItem, PlotPayload, PlotSettings, ProcessedSignal
 
 
@@ -166,8 +167,12 @@ def build_plot_item(
 def build_plot_payload(settings: PlotSettings, group_color: Any | None) -> PlotPayload:
     style_cycler = cycle(LINE_STYLE_CYCLE)
     plot_items: list[PlotItem] = []
+    excluded_file_names = current_excluded_file_names(settings.metadata.excluded_samples, settings.all_files)
 
     for fname in settings.all_files:
+        if fname in excluded_file_names:
+            continue
+
         file_path = os.path.join(settings.target_dir, fname)
         signal = process_single_file(
             file_path,

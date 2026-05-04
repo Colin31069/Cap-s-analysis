@@ -4,7 +4,7 @@ import os
 import threading
 import tkinter as tk
 from itertools import cycle
-from tkinter import filedialog, messagebox, ttk
+from tkinter import filedialog, messagebox, simpledialog, ttk
 
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 from matplotlib.figure import Figure
@@ -19,6 +19,7 @@ from .config import (
     DEFAULT_ROOT_PATH,
     MAX_MEDICINES,
 )
+from .exclusions import current_excluded_samples, max_excluded_samples
 from .filesystem import get_subfolders, list_xlsx_files, normalize_directory_path, resolve_directory_path
 from .metadata import (
     default_experiment_metadata,
@@ -26,7 +27,7 @@ from .metadata import (
     metadata_file_path,
     save_experiment_metadata,
 )
-from .models import ExperimentMetadata, MedicineEntry, PlotPayload, PlotSettings, StatisticalAnalysisResult
+from .models import ExcludedSample, ExperimentMetadata, MedicineEntry, PlotPayload, PlotSettings, StatisticalAnalysisResult
 from .plotting import build_plot_payload, build_plot_title
 from .statistics import build_statistical_analysis, format_statistics_result, write_statistics_csv
 
@@ -86,12 +87,15 @@ class RawDataViewerApp(tk.Tk):
         self.medicine_count_var = tk.StringVar(value=str(DEFAULT_MEDICINE_COUNT))
         self.medicine_name_vars = [tk.StringVar(value="") for _ in range(MAX_MEDICINES)]
         self.medicine_dose_vars = [tk.StringVar(value="") for _ in range(MAX_MEDICINES)]
+        self.sample_exclusion_status_var = tk.StringVar(value="")
 
         self.color_cycler = cycle(COLOR_PALETTE)
         self.is_plotting = False
         self._control_widgets: list[tk.Widget] = []
         self._metadata_widgets: list[tk.Widget] = []
         self._medicine_row_frames: list[ttk.LabelFrame] = []
+        self._sample_file_names: list[str] = []
+        self._excluded_samples: list[ExcludedSample] = []
         self._is_loading_metadata = False
         self._metadata_expanded = False
         self._metadata_toggle_text = tk.StringVar(value="")
@@ -188,6 +192,34 @@ class RawDataViewerApp(tk.Tk):
         self._build_medicine_rows()
         self._set_visible_medicine_rows(DEFAULT_MEDICINE_COUNT)
         self._set_metadata_expanded(False)
+
+        ttk.Separator(controls_frame, orient="horizontal").pack(fill="x", pady=10)
+
+        sample_exclusion_frame = ttk.LabelFrame(controls_frame, text="Sample Exclusion", padding=5)
+        sample_exclusion_frame.pack(fill=tk.X, pady=5)
+
+        ttk.Label(sample_exclusion_frame, textvariable=self.sample_exclusion_status_var).pack(anchor=tk.W)
+        self.sample_exclusion_list = tk.Listbox(sample_exclusion_frame, height=6, exportselection=False)
+        self.sample_exclusion_list.pack(fill=tk.X, pady=(4, 5))
+
+        sample_exclusion_buttons = ttk.Frame(sample_exclusion_frame)
+        sample_exclusion_buttons.pack(fill=tk.X)
+        self.exclude_sample_btn = ttk.Button(
+            sample_exclusion_buttons,
+            text="Exclude Selected",
+            command=self.exclude_selected_sample,
+        )
+        self.exclude_sample_btn.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 4))
+        self._control_widgets.append(self.exclude_sample_btn)
+
+        self.restore_sample_btn = ttk.Button(
+            sample_exclusion_buttons,
+            text="Restore Selected",
+            command=self.restore_selected_sample,
+        )
+        self.restore_sample_btn.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self._control_widgets.append(self.restore_sample_btn)
+        self._refresh_sample_exclusion_list()
 
         ttk.Separator(controls_frame, orient="horizontal").pack(fill="x", pady=10)
 
@@ -360,6 +392,7 @@ class RawDataViewerApp(tk.Tk):
 
     def set_controls_enabled(self, enabled: bool) -> None:
         self.experiment_list.configure(state="normal" if enabled else "disabled")
+        self.sample_exclusion_list.configure(state="normal" if enabled else "disabled")
 
         for widget in self._control_widgets + self._metadata_widgets:
             try:
@@ -431,6 +464,12 @@ class RawDataViewerApp(tk.Tk):
             return ""
         return os.path.join(self.root_path, experiment_name)
 
+    def _current_sample_files(self) -> list[str]:
+        folder_path = self._current_experiment_dir()
+        if not folder_path or not os.path.isdir(folder_path):
+            return []
+        return list_xlsx_files(folder_path)
+
     def _get_medicine_count(self) -> int:
         try:
             return max(0, min(MAX_MEDICINES, int(self.medicine_count_var.get())))
@@ -463,6 +502,9 @@ class RawDataViewerApp(tk.Tk):
                 self.medicine_dose_vars[index].set(entry.dose)
 
             self._set_visible_medicine_rows(count)
+            self._excluded_samples = list(metadata.excluded_samples)
+            if hasattr(self, "sample_exclusion_list"):
+                self._refresh_sample_exclusion_list()
         finally:
             self._is_loading_metadata = False
 
@@ -475,7 +517,102 @@ class RawDataViewerApp(tk.Tk):
             )
             for index in range(count)
         ]
-        return ExperimentMetadata(medicine_count=count, medicines=medicines)
+        files = self._sample_file_names or self._current_sample_files()
+        excluded_samples = current_excluded_samples(self._excluded_samples, files)
+        return ExperimentMetadata(
+            medicine_count=count,
+            medicines=medicines,
+            excluded_samples=excluded_samples,
+        )
+
+    def _refresh_sample_exclusion_list(self) -> None:
+        if not hasattr(self, "sample_exclusion_list"):
+            return
+
+        files = self._current_sample_files()
+        self._sample_file_names = files
+        excluded_samples = current_excluded_samples(self._excluded_samples, files)
+        excluded_reason_by_file = {entry.file_name: entry.reason for entry in excluded_samples}
+        max_allowed = max_excluded_samples(len(files))
+
+        self.sample_exclusion_list.delete(0, tk.END)
+        for file_name in files:
+            reason = excluded_reason_by_file.get(file_name)
+            if reason is not None:
+                suffix = f" - {reason}" if reason else ""
+                self.sample_exclusion_list.insert(tk.END, f"[OUT] {file_name}{suffix}")
+            else:
+                self.sample_exclusion_list.insert(tk.END, f"[IN]  {file_name}")
+
+        included_count = len(files) - len(excluded_samples)
+        if not files:
+            self.sample_exclusion_status_var.set("No .xlsx samples")
+        else:
+            self.sample_exclusion_status_var.set(
+                f"n={len(files)}; included={included_count}; excluded={len(excluded_samples)}/{max_allowed}"
+            )
+
+    def _selected_sample_file(self) -> str:
+        selection = self.sample_exclusion_list.curselection()
+        if not selection:
+            return ""
+        index = selection[0]
+        if index < 0 or index >= len(self._sample_file_names):
+            return ""
+        return self._sample_file_names[index]
+
+    def exclude_selected_sample(self) -> None:
+        file_name = self._selected_sample_file()
+        if not file_name:
+            messagebox.showwarning("No Sample Selected", "Please select a sample to exclude.")
+            return
+
+        files = self._current_sample_files()
+        if file_name not in files:
+            self._refresh_sample_exclusion_list()
+            messagebox.showwarning("Sample Missing", "The selected sample is no longer in this folder.")
+            return
+
+        excluded_samples = current_excluded_samples(self._excluded_samples, files)
+        if any(entry.file_name == file_name for entry in excluded_samples):
+            messagebox.showinfo("Already Excluded", f"{file_name} is already excluded.")
+            return
+
+        max_allowed = max_excluded_samples(len(files))
+        if len(excluded_samples) >= max_allowed:
+            messagebox.showwarning(
+                "Exclusion Limit",
+                f"This folder has n={len(files)}, so at most {max_allowed} sample(s) can be excluded.",
+            )
+            return
+
+        reason = simpledialog.askstring(
+            "Exclude Sample",
+            f"Reason for excluding {file_name} (optional):",
+            parent=self,
+        )
+        if reason is None:
+            return
+
+        self._excluded_samples = excluded_samples + [ExcludedSample(file_name=file_name, reason=reason.strip())]
+        self._refresh_sample_exclusion_list()
+        self._autosave_current_metadata()
+
+    def restore_selected_sample(self) -> None:
+        file_name = self._selected_sample_file()
+        if not file_name:
+            messagebox.showwarning("No Sample Selected", "Please select a sample to restore.")
+            return
+
+        files = self._current_sample_files()
+        excluded_samples = current_excluded_samples(self._excluded_samples, files)
+        if not any(entry.file_name == file_name for entry in excluded_samples):
+            messagebox.showinfo("Not Excluded", f"{file_name} is already included.")
+            return
+
+        self._excluded_samples = [entry for entry in excluded_samples if entry.file_name != file_name]
+        self._refresh_sample_exclusion_list()
+        self._autosave_current_metadata()
 
     def _autosave_current_metadata(self, show_errors: bool = True) -> bool:
         if self._is_loading_metadata:

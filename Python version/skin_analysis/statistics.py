@@ -14,11 +14,14 @@ from .config import (
     DEFAULT_DRUG_APPLY_TIME_SEC,
     DEFAULT_DRUG_APPLY_TOLERANCE_SEC,
 )
+from .exclusions import current_excluded_samples
 from .filesystem import get_subfolders, list_xlsx_files
+from .metadata import load_experiment_metadata
 from .models import (
     AnovaResult,
     GroupStatistics,
     ProcessedSignal,
+    StatisticalExclusion,
     StatisticalAnalysisResult,
     StatisticalSample,
     VarianceCheckResult,
@@ -60,6 +63,23 @@ def _values_for_group(samples: Sequence[StatisticalSample], group_name: str) -> 
 
 def _valid_groups(samples: Sequence[StatisticalSample]) -> list[str]:
     seen: list[str] = []
+    for sample in samples:
+        if sample.group_name not in seen:
+            seen.append(sample.group_name)
+    return seen
+
+
+def _analysis_group_order(
+    samples: Sequence[StatisticalSample],
+    group_names: Sequence[str] | None,
+) -> list[str]:
+    if group_names is None:
+        return _valid_groups(samples)
+
+    seen: list[str] = []
+    for group_name in group_names:
+        if group_name not in seen:
+            seen.append(group_name)
     for sample in samples:
         if sample.group_name not in seen:
             seen.append(sample.group_name)
@@ -258,8 +278,10 @@ def compute_one_way_anova(group_statistics: Sequence[GroupStatistics], samples: 
 def analyze_delta_percent_samples(
     samples: Sequence[StatisticalSample],
     root_path: str = "",
+    group_names: Sequence[str] | None = None,
+    excluded_samples: Sequence[StatisticalExclusion] | None = None,
 ) -> StatisticalAnalysisResult:
-    groups = _valid_groups(samples)
+    groups = _analysis_group_order(samples, group_names)
     group_statistics = [
         summarize_group(group, _values_for_group(samples, group))
         for group in groups
@@ -280,6 +302,7 @@ def analyze_delta_percent_samples(
     return StatisticalAnalysisResult(
         root_path=root_path,
         samples=list(samples),
+        excluded_samples=list(excluded_samples or []),
         group_statistics=group_statistics,
         variance_check=variance_check,
         anova=anova,
@@ -294,17 +317,36 @@ def collect_delta_percent_samples(
     baseline_duration_sec: float = DEFAULT_BASELINE_DURATION_SEC,
     drug_apply_time_sec: float = DEFAULT_DRUG_APPLY_TIME_SEC,
     drug_apply_tolerance_sec: float = DEFAULT_DRUG_APPLY_TOLERANCE_SEC,
-) -> tuple[list[StatisticalSample], tuple[str, ...]]:
+) -> tuple[list[StatisticalSample], tuple[str, ...], list[StatisticalExclusion], list[str]]:
     samples: list[StatisticalSample] = []
+    excluded_samples: list[StatisticalExclusion] = []
     warnings: list[str] = []
-    for group_name in get_subfolders(root_path):
+    group_names = get_subfolders(root_path)
+    for group_name in group_names:
         group_dir = os.path.join(root_path, group_name)
         files = list_xlsx_files(group_dir)
         if not files:
             warnings.append(f"Group '{group_name}' has no .xlsx files.")
             continue
 
+        metadata, metadata_warning = load_experiment_metadata(group_dir)
+        if metadata_warning:
+            warnings.append(f"Group '{group_name}' metadata warning: {metadata_warning}")
+        current_exclusions = current_excluded_samples(metadata.excluded_samples, files)
+        excluded_file_names = {entry.file_name for entry in current_exclusions}
+        excluded_samples.extend(
+            StatisticalExclusion(
+                group_name=group_name,
+                file_name=entry.file_name,
+                reason=entry.reason,
+            )
+            for entry in current_exclusions
+        )
+
         for file_name in files:
+            if file_name in excluded_file_names:
+                continue
+
             file_path = os.path.join(group_dir, file_name)
             signal = process_single_file(
                 file_path,
@@ -343,7 +385,7 @@ def collect_delta_percent_samples(
                 )
             )
 
-    return samples, tuple(warnings)
+    return samples, tuple(warnings), excluded_samples, group_names
 
 
 def build_statistical_analysis(
@@ -353,17 +395,23 @@ def build_statistical_analysis(
     drug_apply_time_sec: float = DEFAULT_DRUG_APPLY_TIME_SEC,
     drug_apply_tolerance_sec: float = DEFAULT_DRUG_APPLY_TOLERANCE_SEC,
 ) -> StatisticalAnalysisResult:
-    samples, collection_warnings = collect_delta_percent_samples(
+    samples, collection_warnings, excluded_samples, group_names = collect_delta_percent_samples(
         root_path,
         baseline_warning_threshold_pct=baseline_warning_threshold_pct,
         baseline_duration_sec=baseline_duration_sec,
         drug_apply_time_sec=drug_apply_time_sec,
         drug_apply_tolerance_sec=drug_apply_tolerance_sec,
     )
-    result = analyze_delta_percent_samples(samples, root_path=root_path)
+    result = analyze_delta_percent_samples(
+        samples,
+        root_path=root_path,
+        group_names=group_names,
+        excluded_samples=excluded_samples,
+    )
     return StatisticalAnalysisResult(
         root_path=result.root_path,
         samples=result.samples,
+        excluded_samples=result.excluded_samples,
         group_statistics=result.group_statistics,
         variance_check=result.variance_check,
         anova=result.anova,
@@ -402,6 +450,14 @@ def format_statistics_result(result: StatisticalAnalysisResult) -> str:
         lines.extend(f"- {warning}" for warning in result.warnings)
     else:
         lines.append("- None")
+
+    lines.extend(["", "Excluded Samples"])
+    if result.excluded_samples:
+        for excluded_sample in result.excluded_samples:
+            reason = excluded_sample.reason or "No reason provided"
+            lines.append(f"{excluded_sample.group_name}/{excluded_sample.file_name}: {reason}")
+    else:
+        lines.append("None")
 
     lines.extend(["", "Descriptive Statistics"])
     if result.group_statistics:
@@ -486,6 +542,19 @@ def statistics_result_to_csv_rows(result: StatisticalAnalysisResult) -> list[lis
     ]
     if result.warnings:
         rows.extend([[warning] for warning in result.warnings])
+    else:
+        rows.append(["None"])
+
+    rows.extend(
+        [
+            [],
+            ["Excluded Samples"],
+            ["group", "file", "reason"],
+        ]
+    )
+    if result.excluded_samples:
+        for excluded_sample in result.excluded_samples:
+            rows.append([excluded_sample.group_name, excluded_sample.file_name, excluded_sample.reason])
     else:
         rows.append(["None"])
 
