@@ -2,6 +2,12 @@
 
 Append-only record of AI agent changes for this workspace.
 
+## 2026-05-05 16:16 +08:00
+
+- Summary: Simplified grouped overlay legends to one enlarged color swatch per concentration group instead of per-sample line-style entries.
+- Files: `Python version/skin_analysis/plotting.py`, `Python version/skin_analysis/gui.py`, `Python version/tests/test_plotting.py`, `README.md`, `CHANGELOG.md`
+- Verification: `cd "Python version" && ./.venv-gui/bin/python -m unittest tests.test_plotting` (pass); `cd "Python version" && ./.venv-gui/bin/python -m unittest discover` (pass; SciPy emitted an expected Shapiro warning for identical test data); `cd "Python version" && ./.venv-gui/bin/python -m py_compile main.py skin_analysis/*.py` (pass)
+
 ## 2026-04-13 14:39 +08:00
 
 - Summary: Added pasted root path support, a collapsible medicine metadata section, and AI agent changelog rules.

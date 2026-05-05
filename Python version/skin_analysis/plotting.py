@@ -11,6 +11,8 @@ from .config import LINE_STYLE_CYCLE
 from .exclusions import current_excluded_file_names
 from .models import BaselineWarningStatus, ExperimentMetadata, PlotItem, PlotPayload, PlotSettings, ProcessedSignal
 
+NO_LEGEND_LABEL = "_nolegend_"
+
 
 def display_mode_to_y_unit(display_mode: str) -> str:
     if display_mode == "Norm":
@@ -90,10 +92,10 @@ def build_legend_label(
     delta_str: str,
     warning_status: BaselineWarningStatus,
 ) -> str:
+    if settings.is_overlay and settings.use_group_color:
+        return NO_LEGEND_LABEL
+
     prefix = f"N {sample_name}{warning_status_suffix(warning_status)}"
-    group_label = build_overlay_legend_group_label(settings)
-    if settings.is_overlay and settings.use_group_color and group_label:
-        prefix = f"{group_label} - {prefix}"
 
     if settings.leg_style == "Simple":
         return prefix
