@@ -7,6 +7,7 @@ import numpy as np
 
 from skin_analysis.models import ExcludedSample, ExperimentMetadata, MedicineEntry, PlotSettings, ProcessedSignal
 from skin_analysis.plotting import (
+    NO_LEGEND_LABEL,
     build_legend_label,
     build_medicine_legend_summary,
     build_overlay_legend_group_label,
@@ -82,8 +83,9 @@ class PlottingTests(unittest.TestCase):
 
     def test_overlay_group_color_legend_includes_medicine_summary(self) -> None:
         settings = make_settings(is_overlay=True, use_group_color=True)
-        label = build_legend_label("3", settings, 10.0, "Δ:2.50pF", "ok")
-        self.assertEqual(label, "lanolin 1% 5mL / plastik 70 1.5uL - N 3 (Base:10.00 pF)")
+        self.assertEqual(build_overlay_legend_group_label(settings), "lanolin 1% 5mL / plastik 70 1.5uL")
+        label = build_legend_label("3", settings, 10.0, "Δ:2.50pF", "warning")
+        self.assertEqual(label, NO_LEGEND_LABEL)
 
     def test_overlay_legend_does_not_add_medicine_summary_without_group_color(self) -> None:
         settings = make_settings(is_overlay=True, use_group_color=False)
@@ -104,8 +106,9 @@ class PlottingTests(unittest.TestCase):
             is_overlay=True,
             use_group_color=True,
         )
+        self.assertEqual(build_overlay_legend_group_label(settings), "TrialA_0.5pct")
         label = build_legend_label("3", settings, 10.0, "Δ:2.50pF", "ok")
-        self.assertEqual(label, "TrialA_0.5pct - N 3 (Base:10.00 pF)")
+        self.assertEqual(label, NO_LEGEND_LABEL)
 
     def test_legend_suffix_marks_warning_files(self) -> None:
         settings = make_settings(leg_style="Simple")

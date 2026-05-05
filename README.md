@@ -118,7 +118,7 @@ ROOT/
    - `Overlay Mode`：將不同實驗資料疊加在同一張圖上
    - `Experiment Color`：同一次載入的實驗使用同色，靠線型區分不同 sample
    - `Show Drop Lines`：顯示 `0` 秒位置的垂直輔助線，也就是各條曲線對齊後的 drop 參考點
-   - `Legend Customization`：控制圖例是否顯示 baseline、delta；疊圖且開啟 `Experiment Color` 時，圖例會優先顯示藥品/濃度摘要，沒有填 metadata 時會改用實驗資料夾名稱；若 baseline 品質可疑，圖例會加上 `注意` 或 `不準確`
+   - `Legend Customization`：控制圖例是否顯示 baseline、delta；疊圖且開啟 `Experiment Color` 時，圖例只會以放大的色塊列出每個藥品/濃度組別，沒有填 metadata 時會改用實驗資料夾名稱；baseline 品質可疑時仍會跳出警示視窗
 8. 點選 `LOAD & PLOT` 載入並繪圖。
 9. 如果 baseline 視窗和施藥搜尋區間重疊，程式會自動縮短 baseline 視窗；如果在指定的施藥時間區間內沒有找到明顯反應點，程式會警告後退回自動搜尋。
 10. 如果某些檔案的 baseline 視窗尾端偏移過大，或在 baseline 期間就出現連續上升，程式會跳出警示視窗列出受影響的 sample，供使用者自行判斷是否接受這筆實驗資料。

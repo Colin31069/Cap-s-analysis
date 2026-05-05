@@ -8,6 +8,7 @@ from tkinter import filedialog, messagebox, simpledialog, ttk
 
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 from matplotlib.figure import Figure
+from matplotlib.patches import Patch
 
 from .config import (
     COLOR_PALETTE,
@@ -29,7 +30,7 @@ from .metadata import (
     save_experiment_metadata,
 )
 from .models import ExcludedSample, ExperimentMetadata, MedicineEntry, PlotPayload, PlotSettings, StatisticalAnalysisResult
-from .plotting import build_plot_payload, build_plot_title
+from .plotting import build_overlay_legend_group_label, build_plot_payload, build_plot_title
 from .statistics import (
     build_dixon_q_review_for_group,
     build_statistical_analysis,
@@ -37,6 +38,8 @@ from .statistics import (
     format_statistics_result,
     write_statistics_csv,
 )
+
+OVERLAY_LEGEND_FONT_SIZE = 22
 
 
 EXPORT_FILETYPES = (
@@ -109,6 +112,7 @@ class RawDataViewerApp(tk.Tk):
         self._metadata_toggle_text = tk.StringVar(value="")
         self._warning_dialog: tk.Toplevel | None = None
         self._last_default_plot_title = ""
+        self._overlay_legend_entries: dict[str, object] = {}
 
         self.create_widgets()
         self.custom_plot_title_var.trace_add("write", self._on_custom_plot_title_changed)
@@ -907,6 +911,7 @@ class RawDataViewerApp(tk.Tk):
         self.ax.set_ylabel("Value")
         self.ax.grid(True, linestyle=":", alpha=0.6)
         self.color_cycler = cycle(COLOR_PALETTE)
+        self._overlay_legend_entries.clear()
         self.ax.set_prop_cycle(None)
         self.canvas.draw_idle()
 
@@ -914,6 +919,17 @@ class RawDataViewerApp(tk.Tk):
         if not is_overlay:
             return COLOR_PALETTE[0]
         return next(self.color_cycler)
+
+    def _group_color_for_settings(self, settings: PlotSettings):
+        if not settings.use_group_color:
+            return None
+
+        if settings.is_overlay:
+            group_label = build_overlay_legend_group_label(settings)
+            if group_label in self._overlay_legend_entries:
+                return self._overlay_legend_entries[group_label]
+
+        return self._next_group_color(settings.is_overlay)
 
     def plot_data(self) -> None:
         if self.is_plotting:
@@ -970,7 +986,7 @@ class RawDataViewerApp(tk.Tk):
             baseline_warning_threshold_pct=baseline_warning_threshold_pct,
             custom_title=self.custom_plot_title_var.get().strip(),
         )
-        group_color = self._next_group_color(settings.is_overlay) if settings.use_group_color else None
+        group_color = self._group_color_for_settings(settings)
 
         self._set_plotting_state(True)
         threading.Thread(
@@ -998,6 +1014,7 @@ class RawDataViewerApp(tk.Tk):
         self.ax.set_ylabel(payload.y_unit)
 
         count = 0
+        first_line_color = None
         for item in payload.plot_items:
             count += 1
             line, = self.ax.plot(
@@ -1009,17 +1026,41 @@ class RawDataViewerApp(tk.Tk):
                 alpha=0.8,
                 lw=1.5,
             )
+            if first_line_color is None:
+                first_line_color = line.get_color()
 
             if settings.display_mode != "Base" and settings.show_drop_lines:
                 self.ax.axvline(x=item.drop_time, color=line.get_color(), ls="--", alpha=0.3)
 
         if count > 0:
-            self.ax.legend(fontsize="x-small", loc="upper left", bbox_to_anchor=(1.0, 1.0))
+            if settings.is_overlay and settings.use_group_color:
+                self._update_overlay_group_legend(settings, first_line_color)
+            else:
+                self.ax.legend(fontsize="x-small", loc="upper left", bbox_to_anchor=(1.0, 1.0))
             self.fig.tight_layout()
             self.canvas.draw_idle()
 
         self._set_plotting_state(False)
         self._show_plot_warnings(payload)
+
+    def _update_overlay_group_legend(self, settings: PlotSettings, color) -> None:
+        group_label = build_overlay_legend_group_label(settings)
+        if not group_label:
+            return
+
+        self._overlay_legend_entries[group_label] = color
+        handles = [
+            Patch(facecolor=entry_color, edgecolor=entry_color, label=entry_label)
+            for entry_label, entry_color in self._overlay_legend_entries.items()
+        ]
+        self.ax.legend(
+            handles=handles,
+            fontsize=OVERLAY_LEGEND_FONT_SIZE,
+            loc="upper left",
+            bbox_to_anchor=(1.0, 1.0),
+            handlelength=1.0,
+            handleheight=1.0,
+        )
 
     def _plot_data_failed(self, exc: Exception) -> None:
         self._set_plotting_state(False)
