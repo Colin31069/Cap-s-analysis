@@ -9,6 +9,7 @@ from numpy.typing import NDArray
 FloatArray = NDArray[np.float64]
 BaselineWarningStatus = Literal["ok", "warning", "inaccurate"]
 DropDetectionSource = Literal["window", "fallback_auto"]
+DixonQSide = Literal["low", "high"]
 
 
 @dataclass(frozen=True)
@@ -21,6 +22,7 @@ class MedicineEntry:
 class ExcludedSample:
     file_name: str
     reason: str = ""
+    method: str = ""
 
 
 @dataclass(frozen=True)
@@ -105,6 +107,7 @@ class StatisticalSample:
     baseline_warning_status: BaselineWarningStatus
     drop_detection_source: DropDetectionSource
     warnings: tuple[str, ...]
+    file_name: str = ""
 
 
 @dataclass(frozen=True)
@@ -112,6 +115,37 @@ class StatisticalExclusion:
     group_name: str
     file_name: str
     reason: str
+    method: str = ""
+
+
+@dataclass(frozen=True)
+class DixonQRecommendation:
+    group_name: str
+    sample_name: str
+    file_name: str
+    side: DixonQSide
+    delta_percent: float
+    nearest_delta_percent: float
+    gap_delta_percent: float
+    range_delta_percent: float
+    q_statistic: float
+    critical_value: float
+    alpha: float
+    warnings: tuple[str, ...]
+    note: str
+
+
+@dataclass(frozen=True)
+class StatisticalOutlierCandidate:
+    group_name: str
+    sample_name: str
+    delta_percent: float
+    peer_median: float
+    peer_mad: float
+    delta_from_peer_median: float
+    modified_z_score: float
+    warnings: tuple[str, ...]
+    note: str
 
 
 @dataclass(frozen=True)
@@ -164,3 +198,8 @@ class StatisticalAnalysisResult:
     warnings: tuple[str, ...]
     scipy_available: bool
     excluded_samples: list[StatisticalExclusion] = field(default_factory=list)
+    outlier_candidates: list[StatisticalOutlierCandidate] = field(default_factory=list)
+    outlier_review_notes: tuple[str, ...] = ()
+    dixon_recommendations: list[DixonQRecommendation] = field(default_factory=list)
+    dixon_review_notes: tuple[str, ...] = ()
+    dixon_sensitivity_anova: AnovaResult | None = None

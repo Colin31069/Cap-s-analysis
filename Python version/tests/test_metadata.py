@@ -29,7 +29,7 @@ class MetadataTests(unittest.TestCase):
                 ],
                 excluded_samples=[
                     ExcludedSample(file_name="3.xlsx", reason="baseline drift"),
-                    ExcludedSample(file_name="5.xlsx", reason="bad contact"),
+                    ExcludedSample(file_name="5.xlsx", reason="Dixon Q", method="dixon_q"),
                 ],
             )
 
@@ -92,6 +92,33 @@ class MetadataTests(unittest.TestCase):
                 [
                     ExcludedSample(file_name="3.xlsx", reason="baseline drift"),
                     ExcludedSample(file_name="4.xlsx", reason="bad contact"),
+                ],
+            )
+
+    def test_excluded_sample_method_is_optional_and_preserved(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            Path(metadata_file_path(tmp_dir)).write_text(
+                """
+{
+  "medicine_count": 1,
+  "medicines": [{"name": "", "dose": ""}],
+  "excluded_samples": [
+    {"file_name": "2.xlsx", "reason": "old manual reason"},
+    {"file_name": "3.xlsx", "reason": "Dixon Q", "method": "dixon_q"}
+  ]
+}
+""",
+                encoding="utf-8",
+            )
+
+            metadata, warning = load_experiment_metadata(tmp_dir)
+
+            self.assertIsNone(warning)
+            self.assertEqual(
+                metadata.excluded_samples,
+                [
+                    ExcludedSample(file_name="2.xlsx", reason="old manual reason"),
+                    ExcludedSample(file_name="3.xlsx", reason="Dixon Q", method="dixon_q"),
                 ],
             )
 

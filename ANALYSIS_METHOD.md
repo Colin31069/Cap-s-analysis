@@ -212,6 +212,24 @@ Delta % = delta pF / baseline pF * 100
 
 手動踢除的 sample 不會進入 `Delta %`、描述統計或 one-way ANOVA。統計視窗與 CSV 會列出被排除的檔名與原因；描述統計中的 `n` 是排除後實際納入分析的 sample 數。
 
+工具也支援 Dixon's Q `Q10` test 作為明確的單一異常值建議。Dixon Q 只在每組納入分析後 `n=3` 到 `n=10` 時執行，並且只檢查排序後的最低值與最高值：
+
+```text
+Q = gap / range
+```
+
+其中 `gap` 是可疑端點和最近鄰資料點的距離，`range` 是該組最大值與最小值的距離。這版使用 `α=0.05` 的內建 critical value table，數值參考 [LibreTexts Dixon's Q-Test critical values](https://chem.libretexts.org/Ancillary_Materials/Reference/Reference_Tables/Analytic_References/Appendix_06%3A_Critical_Values_for_Dixons_Q-Test)。如果 `Q > Qcritical`，程式會列出 `Recommended Dixon Exclusions`，並在 Statistics 報告中提供「排除 Dixon 建議樣本後」的 ANOVA sensitivity preview。這個 preview 不會自動改 metadata；使用者仍需在 `Sample Exclusion` 中確認並保存原因。
+
+一般人工排除規則仍是 `n < 5` 不排除、`n >= 5` 最多 `floor(n / 5)`。唯一例外是 `n=3` 或 `n=4` 且 Dixon Q 通過 `α=0.05` 時，工具允許保存一筆 `method=dixon_q` 的排除紀錄。
+
+統計視窗也會做 `Outlier Review`，但這不是自動踢除規則。程式只在每組納入分析後 `n >= 5` 時，對每一筆 `Delta %` 用同組其他 sample 計算 leave-one-out median 與 MAD，再計算：
+
+```text
+modified z = 0.6745 * (Delta % - peer median) / peer MAD
+```
+
+如果 `abs(modified z) >= 3.5`，該 sample 會被列為候選 outlier，提醒使用者回頭檢查原始曲線、baseline/timing warning 與實驗紀錄。候選樣本不會自動排除，也不會寫入 metadata；只有使用者在 `Sample Exclusion` 手動排除時，才會保存排除原因。
+
 每個濃度組會列出描述統計：
 
 - sample 數量 `n`

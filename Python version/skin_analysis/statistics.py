@@ -13,16 +13,23 @@ from .config import (
     DEFAULT_BASELINE_WARNING_THRESHOLD_PCT,
     DEFAULT_DRUG_APPLY_TIME_SEC,
     DEFAULT_DRUG_APPLY_TOLERANCE_SEC,
+    DIXON_Q_ALPHA,
+    DIXON_Q_CRITICAL_VALUES,
+    OUTLIER_MIN_GROUP_N,
+    OUTLIER_MODIFIED_Z_THRESHOLD,
 )
-from .exclusions import current_excluded_samples
+from .exclusions import current_excluded_samples, max_excluded_samples
 from .filesystem import get_subfolders, list_xlsx_files
 from .metadata import load_experiment_metadata
 from .models import (
     AnovaResult,
+    DixonQRecommendation,
+    ExcludedSample,
     GroupStatistics,
     ProcessedSignal,
     StatisticalExclusion,
     StatisticalAnalysisResult,
+    StatisticalOutlierCandidate,
     StatisticalSample,
     VarianceCheckResult,
 )
@@ -34,6 +41,8 @@ except ImportError:  # pragma: no cover - exercised in environments without scip
 
 SCIPY_AVAILABLE = scipy_stats is not None
 MISSING_SCIPY_NOTE = "SciPy is not installed; p-values and 95% CIs are unavailable."
+MODIFIED_Z_SCORE_SCALE = 0.6745
+MAD_EPSILON = 1e-12
 
 
 def _nan() -> float:
@@ -59,6 +68,18 @@ def delta_percent_from_signal(signal: ProcessedSignal) -> float:
 def _values_for_group(samples: Sequence[StatisticalSample], group_name: str) -> np.ndarray:
     values = [sample.delta_percent for sample in samples if sample.group_name == group_name]
     return np.asarray(values, dtype=float)
+
+
+def _samples_for_group(samples: Sequence[StatisticalSample], group_name: str) -> list[StatisticalSample]:
+    return [
+        sample
+        for sample in samples
+        if sample.group_name == group_name and _is_finite(sample.delta_percent)
+    ]
+
+
+def sample_file_name(sample: StatisticalSample) -> str:
+    return sample.file_name or f"{sample.sample_name}.xlsx"
 
 
 def _valid_groups(samples: Sequence[StatisticalSample]) -> list[str]:
@@ -275,6 +296,200 @@ def compute_one_way_anova(group_statistics: Sequence[GroupStatistics], samples: 
     )
 
 
+def _dixon_recommendation_for_group(group_name: str, group_samples: Sequence[StatisticalSample]) -> tuple[DixonQRecommendation | None, str | None]:
+    sorted_samples = sorted(group_samples, key=lambda sample: sample.delta_percent)
+    n = len(sorted_samples)
+    if n < min(DIXON_Q_CRITICAL_VALUES):
+        return None, f"Group '{group_name}' has n={n}; Dixon Q10 needs n >= {min(DIXON_Q_CRITICAL_VALUES)}."
+    if n > max(DIXON_Q_CRITICAL_VALUES):
+        return None, f"Group '{group_name}' has n={n}; Dixon Q10 table is available only up to n={max(DIXON_Q_CRITICAL_VALUES)}."
+
+    low_sample = sorted_samples[0]
+    low_neighbor = sorted_samples[1]
+    high_neighbor = sorted_samples[-2]
+    high_sample = sorted_samples[-1]
+    range_delta_percent = high_sample.delta_percent - low_sample.delta_percent
+    if not _is_finite(range_delta_percent) or range_delta_percent <= 0:
+        return None, f"Group '{group_name}' Dixon Q10 not run because Delta % range is zero."
+
+    critical_value = DIXON_Q_CRITICAL_VALUES[n]
+    low_gap = low_neighbor.delta_percent - low_sample.delta_percent
+    high_gap = high_sample.delta_percent - high_neighbor.delta_percent
+    low_q = low_gap / range_delta_percent
+    high_q = high_gap / range_delta_percent
+    low_passes = low_q > critical_value
+    high_passes = high_q > critical_value
+
+    if low_passes and high_passes and math.isclose(low_q, high_q, rel_tol=1e-12, abs_tol=1e-12):
+        return None, (
+            f"Group '{group_name}' has tied low/high Dixon Q10 candidates; no single recommendation was made."
+        )
+    if low_passes and (not high_passes or low_q > high_q):
+        selected_sample = low_sample
+        nearest_delta_percent = low_neighbor.delta_percent
+        gap_delta_percent = low_gap
+        q_statistic = low_q
+        side = "low"
+    elif high_passes:
+        selected_sample = high_sample
+        nearest_delta_percent = high_neighbor.delta_percent
+        gap_delta_percent = high_gap
+        q_statistic = high_q
+        side = "high"
+    else:
+        return None, None
+
+    return (
+        DixonQRecommendation(
+            group_name=selected_sample.group_name,
+            sample_name=selected_sample.sample_name,
+            file_name=sample_file_name(selected_sample),
+            side=side,
+            delta_percent=selected_sample.delta_percent,
+            nearest_delta_percent=nearest_delta_percent,
+            gap_delta_percent=gap_delta_percent,
+            range_delta_percent=range_delta_percent,
+            q_statistic=float(q_statistic),
+            critical_value=critical_value,
+            alpha=DIXON_Q_ALPHA,
+            warnings=selected_sample.warnings,
+            note="Dixon Q10 recommends exclusion review; not automatically excluded.",
+        ),
+        None,
+    )
+
+
+def compute_dixon_q_review(
+    group_statistics: Sequence[GroupStatistics],
+    samples: Sequence[StatisticalSample],
+) -> tuple[list[DixonQRecommendation], tuple[str, ...]]:
+    recommendations: list[DixonQRecommendation] = []
+    notes: list[str] = []
+    for summary in group_statistics:
+        group_samples = _samples_for_group(samples, summary.group_name)
+        recommendation, note = _dixon_recommendation_for_group(summary.group_name, group_samples)
+        if recommendation is not None:
+            recommendations.append(recommendation)
+        if note:
+            notes.append(note)
+    return recommendations, tuple(notes)
+
+
+def compute_dixon_sensitivity_anova(
+    samples: Sequence[StatisticalSample],
+    group_names: Sequence[str],
+    recommendations: Sequence[DixonQRecommendation],
+) -> AnovaResult | None:
+    if not recommendations:
+        return None
+
+    recommended_keys = {
+        (recommendation.group_name, recommendation.file_name.casefold())
+        for recommendation in recommendations
+    }
+    sensitivity_samples = [
+        sample
+        for sample in samples
+        if (sample.group_name, sample_file_name(sample).casefold()) not in recommended_keys
+    ]
+    sensitivity_groups = [
+        summarize_group(group_name, _values_for_group(sensitivity_samples, group_name))
+        for group_name in group_names
+    ]
+    anova = compute_one_way_anova(sensitivity_groups, sensitivity_samples)
+    return AnovaResult(
+        method="One-way ANOVA (Dixon sensitivity)",
+        group_count=anova.group_count,
+        sample_count=anova.sample_count,
+        statistic=anova.statistic,
+        df_num=anova.df_num,
+        df_den=anova.df_den,
+        p_value=anova.p_value,
+        eta_squared=anova.eta_squared,
+        omega_squared=anova.omega_squared,
+        note=f"{anova.note} Preview excludes {len(recommendations)} Dixon Q recommendation(s).",
+    )
+
+
+def compute_outlier_review(
+    group_statistics: Sequence[GroupStatistics],
+    samples: Sequence[StatisticalSample],
+    excluded_samples: Sequence[StatisticalExclusion] | None = None,
+) -> tuple[list[StatisticalOutlierCandidate], tuple[str, ...]]:
+    candidates: list[StatisticalOutlierCandidate] = []
+    notes: list[str] = []
+    excluded_count_by_group: dict[str, int] = {}
+    for excluded_sample in excluded_samples or ():
+        excluded_count_by_group[excluded_sample.group_name] = excluded_count_by_group.get(excluded_sample.group_name, 0) + 1
+
+    for summary in group_statistics:
+        group_samples = _samples_for_group(samples, summary.group_name)
+        n = len(group_samples)
+        if n < OUTLIER_MIN_GROUP_N:
+            notes.append(
+                f"Group '{summary.group_name}' has n={n}; robust outlier review needs n >= {OUTLIER_MIN_GROUP_N}."
+            )
+            continue
+
+        group_candidates: list[StatisticalOutlierCandidate] = []
+        zero_mad_count = 0
+        group_values = np.asarray([sample.delta_percent for sample in group_samples], dtype=float)
+
+        for index, sample in enumerate(group_samples):
+            peer_values = np.delete(group_values, index)
+            peer_median = float(np.median(peer_values))
+            peer_mad = float(np.median(np.abs(peer_values - peer_median)))
+            if not _is_finite(peer_mad) or peer_mad <= MAD_EPSILON:
+                zero_mad_count += 1
+                continue
+
+            delta_from_peer_median = sample.delta_percent - peer_median
+            modified_z_score = MODIFIED_Z_SCORE_SCALE * delta_from_peer_median / peer_mad
+            if abs(modified_z_score) < OUTLIER_MODIFIED_Z_THRESHOLD:
+                continue
+
+            group_candidates.append(
+                StatisticalOutlierCandidate(
+                    group_name=sample.group_name,
+                    sample_name=sample.sample_name,
+                    delta_percent=sample.delta_percent,
+                    peer_median=peer_median,
+                    peer_mad=peer_mad,
+                    delta_from_peer_median=delta_from_peer_median,
+                    modified_z_score=float(modified_z_score),
+                    warnings=sample.warnings,
+                    note=(
+                        f"abs(modified z) >= {OUTLIER_MODIFIED_Z_THRESHOLD:g}; "
+                        "review raw curve; not automatically excluded."
+                    ),
+                )
+            )
+
+        if zero_mad_count == n:
+            notes.append(
+                f"Group '{summary.group_name}' robust outlier review could not compute modified z-scores because peer MAD was zero."
+            )
+        elif zero_mad_count:
+            notes.append(
+                f"Group '{summary.group_name}' skipped {zero_mad_count} sample(s) in robust outlier review because peer MAD was zero."
+            )
+
+        original_n_estimate = n + excluded_count_by_group.get(summary.group_name, 0)
+        max_allowed = max_excluded_samples(original_n_estimate)
+        if group_candidates and len(group_candidates) > max_allowed:
+            notes.append(
+                f"Group '{summary.group_name}' has {len(group_candidates)} outlier candidate(s), above the manual exclusion cap of {max_allowed}; review whether the whole group has a quality problem."
+            )
+        elif group_candidates and len(group_candidates) + excluded_count_by_group.get(summary.group_name, 0) > max_allowed:
+            notes.append(
+                f"Group '{summary.group_name}' already has {excluded_count_by_group[summary.group_name]} excluded sample(s); excluding every candidate would exceed the manual exclusion cap of {max_allowed}."
+            )
+
+        candidates.extend(group_candidates)
+
+    return candidates, tuple(notes)
+
+
 def analyze_delta_percent_samples(
     samples: Sequence[StatisticalSample],
     root_path: str = "",
@@ -298,6 +513,13 @@ def analyze_delta_percent_samples(
 
     variance_check = compute_variance_check(group_statistics, samples)
     anova = compute_one_way_anova(group_statistics, samples)
+    dixon_recommendations, dixon_review_notes = compute_dixon_q_review(group_statistics, samples)
+    dixon_sensitivity_anova = compute_dixon_sensitivity_anova(samples, groups, dixon_recommendations)
+    outlier_candidates, outlier_review_notes = compute_outlier_review(
+        group_statistics,
+        samples,
+        excluded_samples=excluded_samples,
+    )
 
     return StatisticalAnalysisResult(
         root_path=root_path,
@@ -306,9 +528,98 @@ def analyze_delta_percent_samples(
         group_statistics=group_statistics,
         variance_check=variance_check,
         anova=anova,
+        dixon_recommendations=dixon_recommendations,
+        dixon_review_notes=dixon_review_notes,
+        dixon_sensitivity_anova=dixon_sensitivity_anova,
+        outlier_candidates=outlier_candidates,
+        outlier_review_notes=outlier_review_notes,
         warnings=tuple(warnings),
         scipy_available=SCIPY_AVAILABLE,
     )
+
+
+def collect_delta_percent_samples_for_group(
+    group_name: str,
+    group_dir: str,
+    files: Sequence[str],
+    excluded_file_names: set[str],
+    baseline_warning_threshold_pct: float = DEFAULT_BASELINE_WARNING_THRESHOLD_PCT,
+    baseline_duration_sec: float = DEFAULT_BASELINE_DURATION_SEC,
+    drug_apply_time_sec: float = DEFAULT_DRUG_APPLY_TIME_SEC,
+    drug_apply_tolerance_sec: float = DEFAULT_DRUG_APPLY_TOLERANCE_SEC,
+) -> tuple[list[StatisticalSample], tuple[str, ...]]:
+    samples: list[StatisticalSample] = []
+    warnings: list[str] = []
+    for file_name in files:
+        if file_name in excluded_file_names:
+            continue
+
+        file_path = os.path.join(group_dir, file_name)
+        signal = process_single_file(
+            file_path,
+            baseline_warning_threshold_pct=baseline_warning_threshold_pct,
+            baseline_duration_sec=baseline_duration_sec,
+            drug_apply_time_sec=drug_apply_time_sec,
+            drug_apply_tolerance_sec=drug_apply_tolerance_sec,
+        )
+        sample_name = os.path.splitext(file_name)[0]
+        if signal is None:
+            warnings.append(f"{group_name}/{file_name} could not be analyzed.")
+            continue
+
+        delta_percent = delta_percent_from_signal(signal)
+        if not _is_finite(delta_percent):
+            warnings.append(f"{group_name}/{file_name} has an invalid Delta % and was skipped.")
+            continue
+
+        sample_warnings: list[str] = []
+        if signal.baseline_warning_status != "ok":
+            sample_warnings.append(f"baseline {signal.baseline_warning_status}")
+        if signal.timing_warning_details:
+            sample_warnings.extend(signal.timing_warning_details)
+
+        samples.append(
+            StatisticalSample(
+                group_name=group_name,
+                sample_name=sample_name,
+                delta_percent=delta_percent,
+                delta_capacitance=signal.delta_capacitance,
+                baseline=signal.initial_avg,
+                drop_time=signal.drop_time,
+                baseline_warning_status=signal.baseline_warning_status,
+                drop_detection_source=signal.drop_detection_source,
+                warnings=tuple(sample_warnings),
+                file_name=file_name,
+            )
+        )
+    return samples, tuple(warnings)
+
+
+def build_dixon_q_review_for_group(
+    group_name: str,
+    group_dir: str,
+    excluded_samples: Sequence[ExcludedSample],
+    baseline_warning_threshold_pct: float = DEFAULT_BASELINE_WARNING_THRESHOLD_PCT,
+    baseline_duration_sec: float = DEFAULT_BASELINE_DURATION_SEC,
+    drug_apply_time_sec: float = DEFAULT_DRUG_APPLY_TIME_SEC,
+    drug_apply_tolerance_sec: float = DEFAULT_DRUG_APPLY_TOLERANCE_SEC,
+) -> tuple[list[StatisticalSample], list[DixonQRecommendation], tuple[str, ...]]:
+    files = list_xlsx_files(group_dir)
+    current_exclusions = current_excluded_samples(excluded_samples, files)
+    excluded_file_names = {entry.file_name for entry in current_exclusions}
+    samples, warnings = collect_delta_percent_samples_for_group(
+        group_name,
+        group_dir,
+        files,
+        excluded_file_names,
+        baseline_warning_threshold_pct=baseline_warning_threshold_pct,
+        baseline_duration_sec=baseline_duration_sec,
+        drug_apply_time_sec=drug_apply_time_sec,
+        drug_apply_tolerance_sec=drug_apply_tolerance_sec,
+    )
+    group_statistics = [summarize_group(group_name, _values_for_group(samples, group_name))]
+    recommendations, dixon_notes = compute_dixon_q_review(group_statistics, samples)
+    return samples, recommendations, tuple(warnings) + dixon_notes
 
 
 def collect_delta_percent_samples(
@@ -339,51 +650,23 @@ def collect_delta_percent_samples(
                 group_name=group_name,
                 file_name=entry.file_name,
                 reason=entry.reason,
+                method=entry.method,
             )
             for entry in current_exclusions
         )
 
-        for file_name in files:
-            if file_name in excluded_file_names:
-                continue
-
-            file_path = os.path.join(group_dir, file_name)
-            signal = process_single_file(
-                file_path,
-                baseline_warning_threshold_pct=baseline_warning_threshold_pct,
-                baseline_duration_sec=baseline_duration_sec,
-                drug_apply_time_sec=drug_apply_time_sec,
-                drug_apply_tolerance_sec=drug_apply_tolerance_sec,
-            )
-            sample_name = os.path.splitext(file_name)[0]
-            if signal is None:
-                warnings.append(f"{group_name}/{file_name} could not be analyzed.")
-                continue
-
-            delta_percent = delta_percent_from_signal(signal)
-            if not _is_finite(delta_percent):
-                warnings.append(f"{group_name}/{file_name} has an invalid Delta % and was skipped.")
-                continue
-
-            sample_warnings: list[str] = []
-            if signal.baseline_warning_status != "ok":
-                sample_warnings.append(f"baseline {signal.baseline_warning_status}")
-            if signal.timing_warning_details:
-                sample_warnings.extend(signal.timing_warning_details)
-
-            samples.append(
-                StatisticalSample(
-                    group_name=group_name,
-                    sample_name=sample_name,
-                    delta_percent=delta_percent,
-                    delta_capacitance=signal.delta_capacitance,
-                    baseline=signal.initial_avg,
-                    drop_time=signal.drop_time,
-                    baseline_warning_status=signal.baseline_warning_status,
-                    drop_detection_source=signal.drop_detection_source,
-                    warnings=tuple(sample_warnings),
-                )
-            )
+        group_samples, group_warnings = collect_delta_percent_samples_for_group(
+            group_name,
+            group_dir,
+            files,
+            excluded_file_names,
+            baseline_warning_threshold_pct=baseline_warning_threshold_pct,
+            baseline_duration_sec=baseline_duration_sec,
+            drug_apply_time_sec=drug_apply_time_sec,
+            drug_apply_tolerance_sec=drug_apply_tolerance_sec,
+        )
+        samples.extend(group_samples)
+        warnings.extend(group_warnings)
 
     return samples, tuple(warnings), excluded_samples, group_names
 
@@ -415,6 +698,11 @@ def build_statistical_analysis(
         group_statistics=result.group_statistics,
         variance_check=result.variance_check,
         anova=result.anova,
+        dixon_recommendations=result.dixon_recommendations,
+        dixon_review_notes=result.dixon_review_notes,
+        dixon_sensitivity_anova=result.dixon_sensitivity_anova,
+        outlier_candidates=result.outlier_candidates,
+        outlier_review_notes=result.outlier_review_notes,
         warnings=tuple(collection_warnings) + result.warnings,
         scipy_available=result.scipy_available,
     )
@@ -438,6 +726,55 @@ def _format_anova_line(result: AnovaResult) -> str:
     )
 
 
+def _format_dixon_q_rule() -> str:
+    return (
+        f"Q10; alpha={DIXON_Q_ALPHA:g}; n={min(DIXON_Q_CRITICAL_VALUES)}-{max(DIXON_Q_CRITICAL_VALUES)}; "
+        "Q = gap / range; checks one low or high endpoint only."
+    )
+
+
+def format_dixon_exclusion_reason(recommendation: DixonQRecommendation) -> str:
+    return (
+        f"Dixon Q10 alpha={recommendation.alpha:g}: {recommendation.side} endpoint, "
+        f"Q={_format_float(recommendation.q_statistic)} > critical={_format_float(recommendation.critical_value)}, "
+        f"Delta %={_format_float(recommendation.delta_percent)}."
+    )
+
+
+def _format_dixon_recommendation_line(recommendation: DixonQRecommendation) -> str:
+    quality_warnings = "; ".join(recommendation.warnings) if recommendation.warnings else "None"
+    return (
+        f"{recommendation.group_name}/{recommendation.file_name}: side={recommendation.side}, "
+        f"delta={_format_float(recommendation.delta_percent)}%, "
+        f"nearest={_format_float(recommendation.nearest_delta_percent)}%, "
+        f"gap={_format_float(recommendation.gap_delta_percent)}%, "
+        f"range={_format_float(recommendation.range_delta_percent)}%, "
+        f"Q={_format_float(recommendation.q_statistic)}, "
+        f"critical={_format_float(recommendation.critical_value)}; "
+        f"quality warnings={quality_warnings}; {recommendation.note}"
+    )
+
+
+def _format_outlier_review_rule() -> str:
+    return (
+        f"Delta % only; group n >= {OUTLIER_MIN_GROUP_N}; "
+        f"leave-one-out peer median/MAD; abs(modified z) >= {OUTLIER_MODIFIED_Z_THRESHOLD:g}; "
+        "not automatically excluded."
+    )
+
+
+def _format_outlier_candidate_line(candidate: StatisticalOutlierCandidate) -> str:
+    quality_warnings = "; ".join(candidate.warnings) if candidate.warnings else "None"
+    return (
+        f"{candidate.group_name}/{candidate.sample_name}: delta={_format_float(candidate.delta_percent)}%, "
+        f"peer median={_format_float(candidate.peer_median)}%, "
+        f"diff={_format_float(candidate.delta_from_peer_median)}%, "
+        f"peer MAD={_format_float(candidate.peer_mad)}%, "
+        f"modified z={_format_float(candidate.modified_z_score)}; "
+        f"quality warnings={quality_warnings}; {candidate.note}"
+    )
+
+
 def format_statistics_result(result: StatisticalAnalysisResult) -> str:
     lines = [
         "Statistical Analysis - Delta %",
@@ -455,9 +792,28 @@ def format_statistics_result(result: StatisticalAnalysisResult) -> str:
     if result.excluded_samples:
         for excluded_sample in result.excluded_samples:
             reason = excluded_sample.reason or "No reason provided"
-            lines.append(f"{excluded_sample.group_name}/{excluded_sample.file_name}: {reason}")
+            method = f" [{excluded_sample.method}]" if excluded_sample.method else ""
+            lines.append(f"{excluded_sample.group_name}/{excluded_sample.file_name}{method}: {reason}")
     else:
         lines.append("None")
+
+    lines.extend(["", "Dixon Q Review", f"Rule: {_format_dixon_q_rule()}"])
+    if result.dixon_review_notes:
+        lines.extend(f"- {note}" for note in result.dixon_review_notes)
+    if result.dixon_recommendations:
+        lines.append(f"Recommended Dixon Exclusions: {len(result.dixon_recommendations)}")
+        lines.extend(_format_dixon_recommendation_line(recommendation) for recommendation in result.dixon_recommendations)
+    else:
+        lines.append("No Dixon Q recommended exclusions.")
+
+    lines.extend(["", "Outlier Review", f"Rule: {_format_outlier_review_rule()}"])
+    if result.outlier_review_notes:
+        lines.extend(f"- {note}" for note in result.outlier_review_notes)
+    if result.outlier_candidates:
+        lines.append(f"Candidate count: {len(result.outlier_candidates)}")
+        lines.extend(_format_outlier_candidate_line(candidate) for candidate in result.outlier_candidates)
+    else:
+        lines.append("No robust outlier candidates.")
 
     lines.extend(["", "Descriptive Statistics"])
     if result.group_statistics:
@@ -480,6 +836,12 @@ def format_statistics_result(result: StatisticalAnalysisResult) -> str:
         )
 
     lines.extend(["", "One-way ANOVA", _format_anova_line(result.anova)])
+    lines.extend(["", "ANOVA Sensitivity After Dixon Recommendations"])
+    if result.dixon_sensitivity_anova is None:
+        lines.append("Not run because Dixon Q made no recommended exclusions.")
+    else:
+        lines.append(_format_anova_line(result.dixon_sensitivity_anova))
+
     lines.extend(["", "Per-Sample Delta %"])
     if result.samples:
         for sample in result.samples:
@@ -532,6 +894,85 @@ def _rows_for_group_statistics(result: StatisticalAnalysisResult) -> Iterable[li
         ]
 
 
+def _rows_for_outlier_review(result: StatisticalAnalysisResult) -> Iterable[list[str]]:
+    yield ["Outlier Review Candidates"]
+    yield ["rule", _format_outlier_review_rule()]
+    if result.outlier_review_notes:
+        yield ["Notes"]
+        for note in result.outlier_review_notes:
+            yield [note]
+    yield [
+        "group",
+        "sample",
+        "delta_percent",
+        "peer_median",
+        "delta_from_peer_median",
+        "peer_mad",
+        "modified_z_score",
+        "quality_warnings",
+        "note",
+    ]
+    if result.outlier_candidates:
+        for candidate in result.outlier_candidates:
+            yield [
+                candidate.group_name,
+                candidate.sample_name,
+                str(candidate.delta_percent),
+                str(candidate.peer_median),
+                str(candidate.delta_from_peer_median),
+                str(candidate.peer_mad),
+                str(candidate.modified_z_score),
+                "; ".join(candidate.warnings),
+                candidate.note,
+            ]
+    else:
+        yield ["None"]
+
+
+def _rows_for_dixon_q_review(result: StatisticalAnalysisResult) -> Iterable[list[str]]:
+    yield ["Dixon Q Review"]
+    yield ["rule", _format_dixon_q_rule()]
+    if result.dixon_review_notes:
+        yield ["Notes"]
+        for note in result.dixon_review_notes:
+            yield [note]
+    yield ["Recommended Dixon Exclusions"]
+    yield [
+        "group",
+        "file",
+        "sample",
+        "side",
+        "delta_percent",
+        "nearest_delta_percent",
+        "gap_delta_percent",
+        "range_delta_percent",
+        "q_statistic",
+        "critical_value",
+        "alpha",
+        "quality_warnings",
+        "note",
+    ]
+    if result.dixon_recommendations:
+        for recommendation in result.dixon_recommendations:
+            yield [
+                recommendation.group_name,
+                recommendation.file_name,
+                recommendation.sample_name,
+                recommendation.side,
+                str(recommendation.delta_percent),
+                str(recommendation.nearest_delta_percent),
+                str(recommendation.gap_delta_percent),
+                str(recommendation.range_delta_percent),
+                str(recommendation.q_statistic),
+                str(recommendation.critical_value),
+                str(recommendation.alpha),
+                "; ".join(recommendation.warnings),
+                recommendation.note,
+            ]
+    else:
+        yield ["None"]
+
+
 def statistics_result_to_csv_rows(result: StatisticalAnalysisResult) -> list[list[str]]:
     rows: list[list[str]] = [
         ["Statistical Analysis - Delta %"],
@@ -549,15 +990,19 @@ def statistics_result_to_csv_rows(result: StatisticalAnalysisResult) -> list[lis
         [
             [],
             ["Excluded Samples"],
-            ["group", "file", "reason"],
+            ["group", "file", "method", "reason"],
         ]
     )
     if result.excluded_samples:
         for excluded_sample in result.excluded_samples:
-            rows.append([excluded_sample.group_name, excluded_sample.file_name, excluded_sample.reason])
+            rows.append([excluded_sample.group_name, excluded_sample.file_name, excluded_sample.method, excluded_sample.reason])
     else:
         rows.append(["None"])
 
+    rows.append([])
+    rows.extend(_rows_for_dixon_q_review(result))
+    rows.append([])
+    rows.extend(_rows_for_outlier_review(result))
     rows.append([])
     rows.extend(_rows_for_group_statistics(result))
     rows.extend(
@@ -586,6 +1031,30 @@ def statistics_result_to_csv_rows(result: StatisticalAnalysisResult) -> list[lis
                 str(result.anova.omega_squared),
                 result.anova.note,
             ],
+            [],
+            ["ANOVA Sensitivity After Dixon Recommendations"],
+            ["method", "group_count", "sample_count", "df_num", "df_den", "statistic", "p_value", "eta_squared", "omega_squared", "note"],
+        ]
+    )
+    if result.dixon_sensitivity_anova is None:
+        rows.append(["None"])
+    else:
+        rows.append(
+            [
+                result.dixon_sensitivity_anova.method,
+                str(result.dixon_sensitivity_anova.group_count),
+                str(result.dixon_sensitivity_anova.sample_count),
+                str(result.dixon_sensitivity_anova.df_num),
+                str(result.dixon_sensitivity_anova.df_den),
+                str(result.dixon_sensitivity_anova.statistic),
+                str(result.dixon_sensitivity_anova.p_value),
+                str(result.dixon_sensitivity_anova.eta_squared),
+                str(result.dixon_sensitivity_anova.omega_squared),
+                result.dixon_sensitivity_anova.note,
+            ]
+        )
+    rows.extend(
+        [
             [],
             ["Per-Sample Delta %"],
             [

@@ -91,7 +91,8 @@ ROOT/
     {"name": "plastik 70", "dose": "1.5uL"}
   ],
   "excluded_samples": [
-    {"file_name": "3.xlsx", "reason": "baseline drift"}
+    {"file_name": "3.xlsx", "reason": "baseline drift"},
+    {"file_name": "4.xlsx", "reason": "Dixon Q10 alpha=0.05", "method": "dixon_q"}
   ]
 }
 ```
@@ -128,6 +129,10 @@ ROOT/
 
 `Sample Exclusion` 是人工資料品質決策，不是自動 outlier detection。被踢除的 `.xlsx` 不會被刪除，只會在目前工具的繪圖、`Delta %` 統計、ANOVA 與 CSV 匯出中排除；metadata 會保留檔名與原因。
 
+`Run Dixon Q` 會檢查目前選取的 experiment folder，使用 Dixon's Q `Q10` test 針對組內 `Delta %` 的最低端或最高端提出一筆建議剔除。它只會選中建議 sample 並預填理由，不會自動排除；確認後仍需按 `Exclude Selected` 才會寫入 metadata。一般規則仍是 `n < 5` 禁止排除，但若 `n=3` 或 `n=4` 且 Dixon Q 在 `α=0.05` 通過，工具允許排除一筆 Dixon-backed sample。
+
+統計視窗會另外提供 `Outlier Review`，用組內 `Delta %` 的 leave-one-out median/MAD 與 modified z-score 標記候選樣本。這只是提醒，不會自動排除；使用者仍應回到原始曲線、baseline/timing warning 與實驗紀錄確認後，再用 `Sample Exclusion` 手動處理。
+
 此工具採用固定上限作為保護欄：
 
 ```text
@@ -154,6 +159,9 @@ Delta % = raw delta pF / 該電極片自己的 baseline pF * 100
 - one-way ANOVA 的 F 值、自由度與 p-value
 - ANOVA effect size：eta-squared 與 omega-squared
 - Shapiro-Wilk normality check 與 Brown-Forsythe variance check
+- Dixon Q review：對每組納入分析後 `n=3-10` 的 `Delta %` 執行 Q10 test，若 `Q > Qcritical` 則列為 `Recommended Dixon Exclusions`
+- ANOVA sensitivity：預覽若移除 Dixon 建議剔除樣本後，one-way ANOVA 會如何變化；這只是報告預覽，不會自動改 metadata
+- robust outlier review：只在每組納入分析後 `n >= 5` 時，使用組內 leave-one-out median/MAD 與 `abs(modified z) >= 3.5` 標記 `Delta %` 候選 outlier；候選不會自動排除
 - 每片電極片的 Delta % 明細與資料品質警示
 
 結果可以從統計視窗匯出為 `.csv`。如果某組樣本數太少，例如 `n < 2` 或 `n < 3`，視窗會列出警示並略過不適合的推論檢定。這版只包含 one-way ANOVA，不包含兩兩比較或事後比較。

@@ -58,19 +58,29 @@ def _normalize_metadata(raw_data: object) -> ExperimentMetadata:
 
         file_name = item.get("file_name", "")
         reason = item.get("reason", "")
-        if not isinstance(file_name, str) or not isinstance(reason, str):
-            raise ValueError("Excluded sample file_name and reason must be strings.")
+        method = item.get("method", "")
+        if not isinstance(file_name, str) or not isinstance(reason, str) or not isinstance(method, str):
+            raise ValueError("Excluded sample file_name, reason, and method must be strings.")
 
         normalized_file_name = os.path.basename(file_name.strip())
         if not normalized_file_name:
             continue
 
-        entry = ExcludedSample(file_name=normalized_file_name, reason=reason.strip())
+        entry = ExcludedSample(
+            file_name=normalized_file_name,
+            reason=reason.strip(),
+            method=method.strip(),
+        )
         key = normalized_file_name.casefold()
         if key in excluded_keys:
             existing_index = excluded_keys[key]
-            if not excluded_entries[existing_index].reason and entry.reason:
-                excluded_entries[existing_index] = entry
+            existing_entry = excluded_entries[existing_index]
+            if (not existing_entry.reason and entry.reason) or (not existing_entry.method and entry.method):
+                excluded_entries[existing_index] = ExcludedSample(
+                    file_name=existing_entry.file_name,
+                    reason=existing_entry.reason or entry.reason,
+                    method=existing_entry.method or entry.method,
+                )
             continue
 
         excluded_keys[key] = len(excluded_entries)
@@ -110,6 +120,7 @@ def save_experiment_metadata(folder_path: str, metadata: ExperimentMetadata) -> 
             {
                 "file_name": os.path.basename(entry.file_name.strip()),
                 "reason": entry.reason.strip(),
+                **({"method": entry.method.strip()} if entry.method.strip() else {}),
             }
             for entry in metadata.excluded_samples
             if os.path.basename(entry.file_name.strip())

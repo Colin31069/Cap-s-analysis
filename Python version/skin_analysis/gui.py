@@ -16,6 +16,7 @@ from .config import (
     DEFAULT_MEDICINE_COUNT,
     DEFAULT_DRUG_APPLY_TIME_SEC,
     DEFAULT_DRUG_APPLY_TOLERANCE_SEC,
+    DIXON_Q_EXCLUSION_METHOD,
     DEFAULT_ROOT_PATH,
     MAX_MEDICINES,
 )
@@ -29,7 +30,13 @@ from .metadata import (
 )
 from .models import ExcludedSample, ExperimentMetadata, MedicineEntry, PlotPayload, PlotSettings, StatisticalAnalysisResult
 from .plotting import build_plot_payload, build_plot_title
-from .statistics import build_statistical_analysis, format_statistics_result, write_statistics_csv
+from .statistics import (
+    build_dixon_q_review_for_group,
+    build_statistical_analysis,
+    format_dixon_exclusion_reason,
+    format_statistics_result,
+    write_statistics_csv,
+)
 
 
 EXPORT_FILETYPES = (
@@ -96,6 +103,7 @@ class RawDataViewerApp(tk.Tk):
         self._medicine_row_frames: list[ttk.LabelFrame] = []
         self._sample_file_names: list[str] = []
         self._excluded_samples: list[ExcludedSample] = []
+        self._dixon_suggested_reasons: dict[str, str] = {}
         self._is_loading_metadata = False
         self._metadata_expanded = False
         self._metadata_toggle_text = tk.StringVar(value="")
@@ -219,6 +227,14 @@ class RawDataViewerApp(tk.Tk):
         )
         self.restore_sample_btn.pack(side=tk.LEFT, fill=tk.X, expand=True)
         self._control_widgets.append(self.restore_sample_btn)
+
+        self.run_dixon_btn = ttk.Button(
+            sample_exclusion_frame,
+            text="Run Dixon Q",
+            command=self.run_dixon_q_for_current_experiment,
+        )
+        self.run_dixon_btn.pack(fill=tk.X, pady=(5, 0))
+        self._control_widgets.append(self.run_dixon_btn)
         self._refresh_sample_exclusion_list()
 
         ttk.Separator(controls_frame, orient="horizontal").pack(fill="x", pady=10)
@@ -503,6 +519,7 @@ class RawDataViewerApp(tk.Tk):
 
             self._set_visible_medicine_rows(count)
             self._excluded_samples = list(metadata.excluded_samples)
+            self._dixon_suggested_reasons.clear()
             if hasattr(self, "sample_exclusion_list"):
                 self._refresh_sample_exclusion_list()
         finally:
@@ -537,19 +554,22 @@ class RawDataViewerApp(tk.Tk):
 
         self.sample_exclusion_list.delete(0, tk.END)
         for file_name in files:
+            excluded_entry = next((entry for entry in excluded_samples if entry.file_name == file_name), None)
             reason = excluded_reason_by_file.get(file_name)
-            if reason is not None:
+            if excluded_entry is not None:
+                method_suffix = " [Dixon Q]" if excluded_entry.method == DIXON_Q_EXCLUSION_METHOD else ""
                 suffix = f" - {reason}" if reason else ""
-                self.sample_exclusion_list.insert(tk.END, f"[OUT] {file_name}{suffix}")
+                self.sample_exclusion_list.insert(tk.END, f"[OUT] {file_name}{method_suffix}{suffix}")
             else:
                 self.sample_exclusion_list.insert(tk.END, f"[IN]  {file_name}")
 
         included_count = len(files) - len(excluded_samples)
+        displayed_max_allowed = max(max_allowed, len(excluded_samples))
         if not files:
             self.sample_exclusion_status_var.set("No .xlsx samples")
         else:
             self.sample_exclusion_status_var.set(
-                f"n={len(files)}; included={included_count}; excluded={len(excluded_samples)}/{max_allowed}"
+                f"n={len(files)}; included={included_count}; excluded={len(excluded_samples)}/{displayed_max_allowed}"
             )
 
     def _selected_sample_file(self) -> str:
@@ -560,6 +580,17 @@ class RawDataViewerApp(tk.Tk):
         if index < 0 or index >= len(self._sample_file_names):
             return ""
         return self._sample_file_names[index]
+
+    def _select_sample_file(self, file_name: str) -> None:
+        if file_name not in self._sample_file_names:
+            self._refresh_sample_exclusion_list()
+        if file_name not in self._sample_file_names:
+            return
+        index = self._sample_file_names.index(file_name)
+        self.sample_exclusion_list.selection_clear(0, tk.END)
+        self.sample_exclusion_list.selection_set(index)
+        self.sample_exclusion_list.activate(index)
+        self.sample_exclusion_list.see(index)
 
     def exclude_selected_sample(self) -> None:
         file_name = self._selected_sample_file()
@@ -578,8 +609,15 @@ class RawDataViewerApp(tk.Tk):
             messagebox.showinfo("Already Excluded", f"{file_name} is already excluded.")
             return
 
+        suggested_reason = self._dixon_suggested_reasons.get(file_name, "")
+        exclusion_method = DIXON_Q_EXCLUSION_METHOD if suggested_reason else ""
         max_allowed = max_excluded_samples(len(files))
-        if len(excluded_samples) >= max_allowed:
+        dixon_exception_allowed = (
+            exclusion_method == DIXON_Q_EXCLUSION_METHOD
+            and 3 <= len(files) < 5
+            and not excluded_samples
+        )
+        if len(excluded_samples) >= max_allowed and not dixon_exception_allowed:
             messagebox.showwarning(
                 "Exclusion Limit",
                 f"This folder has n={len(files)}, so at most {max_allowed} sample(s) can be excluded.",
@@ -590,11 +628,15 @@ class RawDataViewerApp(tk.Tk):
             "Exclude Sample",
             f"Reason for excluding {file_name} (optional):",
             parent=self,
+            initialvalue=suggested_reason,
         )
         if reason is None:
             return
 
-        self._excluded_samples = excluded_samples + [ExcludedSample(file_name=file_name, reason=reason.strip())]
+        self._excluded_samples = excluded_samples + [
+            ExcludedSample(file_name=file_name, reason=reason.strip(), method=exclusion_method)
+        ]
+        self._dixon_suggested_reasons.pop(file_name, None)
         self._refresh_sample_exclusion_list()
         self._autosave_current_metadata()
 
@@ -611,8 +653,99 @@ class RawDataViewerApp(tk.Tk):
             return
 
         self._excluded_samples = [entry for entry in excluded_samples if entry.file_name != file_name]
+        self._dixon_suggested_reasons.pop(file_name, None)
         self._refresh_sample_exclusion_list()
         self._autosave_current_metadata()
+
+    def run_dixon_q_for_current_experiment(self) -> None:
+        if self.is_plotting:
+            return
+
+        experiment_name = self.experiment_var.get().strip()
+        if not experiment_name:
+            messagebox.showwarning("Missing Path", "Please select an experiment folder.")
+            self.experiment_list.focus_set()
+            return
+
+        target_dir = self._current_experiment_dir()
+        if not os.path.isdir(target_dir):
+            messagebox.showerror("Error", "Experiment folder not found.")
+            self.experiment_list.focus_set()
+            return
+
+        files = list_xlsx_files(target_dir)
+        if not files:
+            messagebox.showinfo("Empty", "No .xlsx files found in this folder.")
+            self.experiment_list.focus_set()
+            return
+
+        try:
+            baseline_duration_sec, drug_apply_time_sec, drug_apply_tolerance_sec = self._get_analysis_timing_settings()
+            baseline_warning_threshold_pct = self._get_baseline_warning_threshold_pct()
+        except ValueError as exc:
+            messagebox.showwarning("Invalid Settings", str(exc))
+            return
+
+        self._autosave_current_metadata()
+        metadata = self._metadata_from_editor()
+
+        self._set_plotting_state(True)
+
+        def worker() -> None:
+            try:
+                _samples, recommendations, notes = build_dixon_q_review_for_group(
+                    experiment_name,
+                    target_dir,
+                    metadata.excluded_samples,
+                    baseline_warning_threshold_pct=baseline_warning_threshold_pct,
+                    baseline_duration_sec=baseline_duration_sec,
+                    drug_apply_time_sec=drug_apply_time_sec,
+                    drug_apply_tolerance_sec=drug_apply_tolerance_sec,
+                )
+                self.after(0, lambda recommendations=recommendations, notes=notes: self._apply_dixon_q_result(recommendations, notes, len(files)))
+            except Exception as exc:
+                self.after(0, lambda exc=exc: self._dixon_q_failed(exc))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _apply_dixon_q_result(self, recommendations, notes: tuple[str, ...], file_count: int) -> None:
+        self._set_plotting_state(False)
+
+        if not recommendations:
+            if notes:
+                self._show_warning_dialog("Dixon Q Review", ["[Dixon Q Review]", *notes, "", "No recommended exclusion."])
+            else:
+                messagebox.showinfo("Dixon Q Review", "No Dixon Q recommended exclusion for this experiment folder.")
+            return
+
+        recommendation = recommendations[0]
+        reason = format_dixon_exclusion_reason(recommendation)
+        self._dixon_suggested_reasons[recommendation.file_name] = reason
+        self._refresh_sample_exclusion_list()
+        self._select_sample_file(recommendation.file_name)
+
+        lines = [
+            "[Dixon Q Recommended Exclusion]",
+            f"Sample: {recommendation.file_name}",
+            f"Side: {recommendation.side}",
+            f"Delta %: {recommendation.delta_percent:.4g}",
+            f"Nearest Delta %: {recommendation.nearest_delta_percent:.4g}",
+            f"Gap / range: {recommendation.gap_delta_percent:.4g} / {recommendation.range_delta_percent:.4g}",
+            f"Q: {recommendation.q_statistic:.4g}",
+            f"Critical value (alpha={recommendation.alpha:g}): {recommendation.critical_value:.4g}",
+            "",
+            "The sample has been selected in Sample Exclusion.",
+            "Press Exclude Selected to save this recommendation with the Dixon Q reason.",
+        ]
+        if 3 <= file_count < 5:
+            lines.append("Dixon Q exception: this n<5 group may exclude one Dixon-backed sample.")
+        if notes:
+            lines.extend(["", "Notes", *notes])
+        self._show_warning_dialog("Dixon Q Recommendation", lines)
+
+    def _dixon_q_failed(self, exc: Exception) -> None:
+        self._set_plotting_state(False)
+        messagebox.showerror("Dixon Q Error", f"Failed to run Dixon Q review.\n\n{exc}")
 
     def _autosave_current_metadata(self, show_errors: bool = True) -> bool:
         if self._is_loading_metadata:
@@ -1115,7 +1248,8 @@ class RawDataViewerApp(tk.Tk):
             "Run one-way ANOVA across all concentration folders under the current root.\n\n"
             "Endpoint: Delta % = raw delta pF / each electrode baseline pF * 100.\n"
             "Grouping: each direct child folder under the current root path is one concentration group.\n"
-            "This report includes one-way ANOVA and descriptive statistics only."
+            "This report includes descriptive statistics, robust outlier review, and one-way ANOVA.\n"
+            "Outlier candidates are shown for review only and are not automatically excluded."
         )
         dialog.lift()
         run_btn.focus_set()
