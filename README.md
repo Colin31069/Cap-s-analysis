@@ -166,6 +166,80 @@ Delta % = raw delta pF / 該電極片自己的 baseline pF * 100
 
 結果可以從統計視窗匯出為 `.csv`。如果某組樣本數太少，例如 `n < 2` 或 `n < 3`，視窗會列出警示並略過不適合的推論檢定。這版只包含 one-way ANOVA，不包含兩兩比較或事後比較。
 
+---
+
+## Tauri 版本 (desktop-tauri/)
+
+`desktop-tauri/` 是以 Rust + Tauri v2 + Svelte + Plotly.js 實作的移植版，功能與 Python 版本保持對等。
+
+### 環境需求
+
+- [Node.js](https://nodejs.org/) 18 以上
+- [Rust](https://rustup.rs/) stable (1.80+)
+- Tauri CLI：`cargo install tauri-cli --version "^2"`
+
+### 安裝與開發啟動
+
+```bash
+cd desktop-tauri
+npm install
+npm run tauri dev
+```
+
+### 生產建置
+
+```bash
+cd desktop-tauri
+npm run tauri build
+```
+
+建置產出的安裝包位於 `desktop-tauri/src-tauri/target/release/bundle/`。
+
+### 功能對應
+
+| 功能 | Python 版 | Tauri 版 |
+|---|---|---|
+| 三層資料夾選擇 | ✓ | ✓ |
+| 顯示模式（Norm / Raw / Base） | ✓ | ✓ |
+| Drop 對齊時間軸（t=0 為 drop） | ✓ | ✓ |
+| 施藥視窗 drop 偵測 | ✓ | ✓ |
+| Baseline 準確度警示 | ✓ | ✓ |
+| 可設定 timing 參數 | ✓ | ✓ |
+| Medicine metadata 記錄 | ✓ | ✓ |
+| 手動 sample 排除 | ✓ | ✓ |
+| Dixon Q10 outlier review | ✓ | ✓ |
+| 描述統計 + One-way ANOVA | ✓ | ✓ |
+| Brown-Forsythe variance check | ✓ | ✓ |
+| Shapiro-Wilk normality test | ✓（需 SciPy） | — (not available) |
+| Robust outlier review (MAD) | ✓ | ✓ |
+| ANOVA Dixon sensitivity preview | ✓ | ✓ |
+| Overlay 圖例色塊 | ✓ | ✓ |
+| 統計結果 CSV 匯出 | ✓ | ✓ |
+| PNG 圖表匯出 | ✓ | ✓ |
+
+### 操作流程（Tauri 版）
+
+1. 啟動 App 後，在 **Root path** 貼上或瀏覽實驗根目錄。
+2. 點選 **Refresh List**，依序從 **Step 1 / 2 / 3** 選取資料夾。
+3. 選完 Step 3 後，左側會出現 **Sample Exclusion** 清單，顯示所有 `.xlsx` 的 `[IN]` / `[OUT]` 狀態。
+4. 展開 **Medicine Metadata** 可填入藥品資訊；所有變更自動儲存至資料夾內的 `.skin_analysis_metadata.json`。
+5. 展開 **Timing Parameters** 可調整 baseline 長度、施藥時間、搜尋容差與 baseline 警示門檻（只影響本次工作階段）。
+6. 選擇 **Display Unit**（Normalized / Raw / Baseline Only）。
+7. 在 **Visual Options** 開啟 **Overlay Mode** 可疊加多組實驗；**Group Color** 同組使用同色。
+8. 點選 **Load & Plot** 載入並繪圖；時間軸以偵測到的 drop 為 `t = 0`。
+9. 點選 **Statistics** 對目前 Step 1 + Step 2 底下的所有 Step 3 子資料夾執行統計分析，包含描述統計、ANOVA、Dixon Q review 與 robust outlier review。
+10. 在統計結果面板點選 **Export CSV** 匯出完整統計報表。
+11. 點選 **Export Plot** 儲存目前圖表為 PNG。
+
+### Rust 後端測試
+
+```bash
+cd desktop-tauri/src-tauri
+cargo test
+```
+
+---
+
 ## 測試與驗證
 
 ```bash

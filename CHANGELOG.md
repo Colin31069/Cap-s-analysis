@@ -2,6 +2,13 @@
 
 Append-only record of AI agent changes for this workspace.
 
+## 2026-05-06 Asia/Taipei
+
+- Summary: Ported all Python-version features to the Tauri version: configurable timing parameters, apply-window drop detection, baseline accuracy warnings, drop-aligned time axis (t=0 at drop), metadata persistence (.skin_analysis_metadata.json), sample exclusion system with Dixon Q exception, group statistics + one-way ANOVA + Brown-Forsythe variance check + Dixon Q10 review + robust outlier (MAD) review + CSV export, overlay group legend with medicine summary, medicine metadata UI, timing parameters UI, statistics panel. Also added Tauri version usage section to README.md.
+- Files: `desktop-tauri/src-tauri/Cargo.toml`, `desktop-tauri/src-tauri/src/config.rs`, `desktop-tauri/src-tauri/src/models.rs`, `desktop-tauri/src-tauri/src/analysis.rs`, `desktop-tauri/src-tauri/src/metadata.rs` (new), `desktop-tauri/src-tauri/src/exclusions.rs` (new), `desktop-tauri/src-tauri/src/statistics.rs` (new), `desktop-tauri/src-tauri/src/plotting.rs`, `desktop-tauri/src-tauri/src/commands.rs`, `desktop-tauri/src-tauri/src/lib.rs`, `desktop-tauri/src/lib/types.ts`, `desktop-tauri/src/lib/api.ts`, `desktop-tauri/src/lib/plot.ts`, `desktop-tauri/src/App.svelte`, `README.md`
+- Verification: `cd desktop-tauri/src-tauri && cargo test` → 25 tests pass (23 unit + 1 parity integration + 0 doc); 0 failures.
+- Follow-up fixes: created `desktop-tauri/src-tauri/icons/icon.ico` (required by tauri-build on Windows), fixed `tests/parity_cases.rs` to pass `&AnalysisParams::default()` to `process_single_file`, removed unused `fmt_float` helper in `statistics.rs`, removed stale `INITIAL_BASELINE_POINTS` import in `plotting.rs`.
+
 ## 2026-05-05 16:16 +08:00
 
 - Summary: Simplified grouped overlay legends to one enlarged color swatch per concentration group instead of per-sample line-style entries.
