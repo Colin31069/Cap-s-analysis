@@ -12,8 +12,8 @@ import type {
   StatisticsResponse,
 } from "./types";
 
-export function listFolderLevels(request: FolderLevelsRequest): Promise<FolderLevelsResponse> {
-  return invoke("list_folder_levels", { request });
+export function listExperimentFolders(request: FolderLevelsRequest): Promise<FolderLevelsResponse> {
+  return invoke("list_experiment_folders", { request });
 }
 
 export function loadMetadata(folderPath: string): Promise<ExperimentMetadata> {
@@ -26,11 +26,9 @@ export function saveMetadata(request: SaveMetadataRequest): Promise<void> {
 
 export function listSamplesInFolder(
   rootPath: string,
-  l1: string,
-  l2: string,
-  l3: string,
+  experimentName: string,
 ): Promise<ListSamplesResponse> {
-  return invoke("list_samples_in_folder", { rootPath, l1, l2, l3 });
+  return invoke("list_samples_in_folder", { rootPath, experimentName });
 }
 
 export function buildPlotPayload(request: PlotRequest): Promise<PlotResponse> {

@@ -105,7 +105,7 @@ pub fn build_legend_label(
 
     let mut parts = Vec::new();
     if settings.show_group {
-        parts.push(format!("[{}]", settings.l1));
+        parts.push(format!("[{}]", settings.experiment_name));
     }
     parts.push(prefix);
 
@@ -164,9 +164,7 @@ mod tests {
     fn make_settings() -> PlotRequest {
         PlotRequest {
             root_path: "/tmp".to_string(),
-            l1: "GroupA".to_string(),
-            l2: "10uL".to_string(),
-            l3: "PBS".to_string(),
+            experiment_name: "GroupA".to_string(),
             display_mode: "Norm".to_string(),
             overlay: false,
             use_group_color: true,

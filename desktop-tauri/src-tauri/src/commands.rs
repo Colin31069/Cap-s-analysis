@@ -23,20 +23,9 @@ fn resolve_root(root_path: &str) -> PathBuf {
 // ── Folder navigation ──────────────────────────────────────────────────────────
 
 #[tauri::command]
-pub fn list_folder_levels(request: FolderLevelsRequest) -> Result<FolderLevelsResponse, AppError> {
+pub fn list_experiment_folders(request: FolderLevelsRequest) -> Result<FolderLevelsResponse, AppError> {
     let root = resolve_root(&request.root_path);
-    let l1_options = get_subfolders(&root);
-    let selected_l1 = request.l1.as_ref().filter(|v| l1_options.contains(v)).cloned();
-    let l2_options = selected_l1
-        .as_ref()
-        .map(|l1| get_subfolders(&root.join(l1)))
-        .unwrap_or_default();
-    let selected_l2 = request.l2.as_ref().filter(|v| l2_options.contains(v)).cloned();
-    let l3_options = match (selected_l1.as_ref(), selected_l2.as_ref()) {
-        (Some(l1), Some(l2)) => get_subfolders(&root.join(l1).join(l2)),
-        _ => Vec::new(),
-    };
-    Ok(FolderLevelsResponse { l1_options, l2_options, l3_options })
+    Ok(FolderLevelsResponse { experiment_options: get_subfolders(&root) })
 }
 
 // ── Metadata ───────────────────────────────────────────────────────────────────
@@ -68,11 +57,9 @@ pub fn save_metadata(request: SaveMetadataRequest) -> Result<(), AppError> {
 #[tauri::command]
 pub fn list_samples_in_folder(
     root_path: String,
-    l1: String,
-    l2: String,
-    l3: String,
+    experiment_name: String,
 ) -> Result<ListSamplesResponse, AppError> {
-    let target = resolve_root(&root_path).join(&l1).join(&l2).join(&l3);
+    let target = resolve_root(&root_path).join(&experiment_name);
     if !target.is_dir() {
         return Err(AppError::new("folder_not_found", "Folder not found."));
     }
@@ -116,11 +103,11 @@ pub fn list_samples_in_folder(
 
 #[tauri::command]
 pub fn build_plot_payload(request: PlotRequest) -> Result<PlotResponse, AppError> {
-    if request.l1.is_empty() || request.l2.is_empty() || request.l3.is_empty() {
-        return Err(AppError::new("missing_path", "Please select all folder levels before plotting."));
+    if request.experiment_name.is_empty() {
+        return Err(AppError::new("missing_path", "Please select an experiment folder before plotting."));
     }
     let root = resolve_root(&request.root_path);
-    let target_dir = root.join(&request.l1).join(&request.l2).join(&request.l3);
+    let target_dir = root.join(&request.experiment_name);
     if !target_dir.is_dir() {
         return Err(AppError::new("folder_not_found", "Folder not found."));
     }
@@ -169,7 +156,7 @@ pub fn build_plot_payload(request: PlotRequest) -> Result<PlotResponse, AppError
 
     // If overlay + group_color, add one invisible "group" trace for the legend swatch
     if is_overlay_with_group_color && !series.is_empty() {
-        let group_label = build_overlay_group_label(&request.l3, &metadata);
+        let group_label = build_overlay_group_label(&request.experiment_name, &metadata);
         series.push(crate::models::PlotSeries {
             sample_name: "__group_legend__".to_string(),
             x: vec![],
@@ -184,7 +171,7 @@ pub fn build_plot_payload(request: PlotRequest) -> Result<PlotResponse, AppError
         });
     }
 
-    let title = build_plot_title(&request.l3, &metadata, &request.custom_title);
+    let title = build_plot_title(&request.experiment_name, &metadata, &request.custom_title);
 
     Ok(PlotResponse {
         title,
@@ -200,17 +187,13 @@ pub fn build_plot_payload(request: PlotRequest) -> Result<PlotResponse, AppError
 
 #[tauri::command]
 pub fn run_statistics(request: StatisticsRequest) -> Result<StatisticsResponse, AppError> {
-    if request.l1.is_empty() || request.l2.is_empty() {
-        return Err(AppError::new("missing_path", "Please select L1 and L2 folder levels."));
-    }
     let root = resolve_root(&request.root_path);
-    let stats_root = root.join(&request.l1).join(&request.l2);
-    if !stats_root.is_dir() {
-        return Err(AppError::new("folder_not_found", "The selected folder does not exist."));
+    if !root.is_dir() {
+        return Err(AppError::new("folder_not_found", "The selected root folder does not exist."));
     }
-    let root_path_label = format!("{} / {} / {}", request.root_path, request.l1, request.l2);
+    let root_path_label = root.to_string_lossy().into_owned();
     let params = request.analysis_params();
-    let result = build_statistical_analysis(&stats_root, &root_path_label, &params);
+    let result = build_statistical_analysis(&root, &root_path_label, &params);
     Ok(StatisticsResponse {
         text: format_statistics_result(&result),
         csv: statistics_result_to_csv(&result),

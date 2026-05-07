@@ -8,9 +8,8 @@
     buildPlotPayload,
     chooseCsvExportPath,
     chooseExportPath,
-    listFolderLevels,
+    listExperimentFolders,
     listSamplesInFolder,
-    loadMetadata,
     runStatistics,
     saveMetadata,
   } from "./lib/api";
@@ -18,7 +17,6 @@
   import type {
     AppError,
     DisplayMode,
-    ExcludedSample,
     ExperimentMetadata,
     LegendStyle,
     ListSamplesResponse,
@@ -32,12 +30,8 @@
 
   // ── Path & folder selection ──────────────────────────────────────────────────
   let rootPath = DEFAULT_ROOT_PATH;
-  let l1 = "";
-  let l2 = "";
-  let l3 = "";
-  let l1Options: string[] = [];
-  let l2Options: string[] = [];
-  let l3Options: string[] = [];
+  let experimentName = "";
+  let experimentOptions: string[] = [];
 
   // ── Display options ──────────────────────────────────────────────────────────
   let displayMode: DisplayMode = "Norm";
@@ -67,8 +61,6 @@
 
   // ── Sample exclusion list ────────────────────────────────────────────────────
   let sampleListResponse: ListSamplesResponse | null = null;
-  let selectedFileForExclusion = "";
-  let exclusionReason = "";
 
   // ── Statistics ───────────────────────────────────────────────────────────────
   let showStatsPanel = false;
@@ -92,8 +84,8 @@
   }
 
   function folderPath(): string {
-    if (!rootPath || !l1 || !l2 || !l3) return "";
-    return [rootPath, l1, l2, l3].join("/");
+    if (!rootPath || !experimentName) return "";
+    return [rootPath, experimentName].join("/");
   }
 
   async function renderPlot() {
@@ -106,53 +98,32 @@
 
   async function refreshSelections() {
     if (!rootPath.trim()) {
-      l1Options = []; l2Options = []; l3Options = [];
-      l1 = ""; l2 = ""; l3 = "";
+      experimentOptions = [];
+      experimentName = "";
+      sampleListResponse = null;
       return;
     }
-    const rootLevels = await listFolderLevels({ rootPath });
-    l1Options = rootLevels.l1Options;
-    l1 = selectOrFirst(l1, l1Options);
-    if (!l1) { l2Options = []; l3Options = []; l2 = ""; l3 = ""; return; }
-
-    const secondLevels = await listFolderLevels({ rootPath, l1 });
-    l2Options = secondLevels.l2Options;
-    l2 = selectOrFirst(l2, l2Options);
-    if (!l2) { l3Options = []; l3 = ""; return; }
-
-    const thirdLevels = await listFolderLevels({ rootPath, l1, l2 });
-    l3Options = thirdLevels.l3Options;
-    l3 = selectOrFirst(l3, l3Options);
-    if (l3) await loadSampleList();
+    const response = await listExperimentFolders({ rootPath });
+    experimentOptions = response.experimentOptions;
+    experimentName = selectOrFirst(experimentName, experimentOptions);
+    if (experimentName) {
+      await loadSampleList();
+    } else {
+      sampleListResponse = null;
+      currentMetadata = { medicineCount: 1, medicines: [{ name: "", dose: "" }], excludedSamples: [] };
+    }
   }
 
-  async function handleL1Change() {
-    const secondLevels = await listFolderLevels({ rootPath, l1 });
-    l2Options = secondLevels.l2Options;
-    l2 = selectOrFirst(l2, l2Options);
-    const thirdLevels = await listFolderLevels({ rootPath, l1, l2 });
-    l3Options = thirdLevels.l3Options;
-    l3 = selectOrFirst(l3, l3Options);
-    if (l3) await loadSampleList();
-  }
-
-  async function handleL2Change() {
-    const thirdLevels = await listFolderLevels({ rootPath, l1, l2 });
-    l3Options = thirdLevels.l3Options;
-    l3 = selectOrFirst(l3, l3Options);
-    if (l3) await loadSampleList();
-  }
-
-  async function handleL3Change() {
-    if (l3) await loadSampleList();
+  async function handleExperimentChange() {
+    if (experimentName) await loadSampleList();
   }
 
   // ── Sample list & metadata ───────────────────────────────────────────────────
 
   async function loadSampleList() {
-    if (!rootPath || !l1 || !l2 || !l3) return;
+    if (!rootPath || !experimentName) return;
     try {
-      sampleListResponse = await listSamplesInFolder(rootPath, l1, l2, l3);
+      sampleListResponse = await listSamplesInFolder(rootPath, experimentName);
       currentMetadata = sampleListResponse.metadata;
     } catch (_) {
       sampleListResponse = null;
@@ -205,6 +176,16 @@
     await loadSampleList();
   }
 
+  function isSampleToggleDisabled(info: SampleInfo): boolean {
+    if (busy) return true;
+    if (!sampleListResponse) return true;
+    return (
+      info.included &&
+      sampleListResponse.currentExclusions >= sampleListResponse.maxExclusions &&
+      !sampleListResponse.dixonExceptionAvailable
+    );
+  }
+
   async function runDixonQ() {
     if (!sampleListResponse) return;
     statusTone = "neutral";
@@ -213,8 +194,6 @@
     try {
       const req: StatisticsRequest = {
         rootPath,
-        l1,
-        l2,
         baselineDurationSec,
         drugApplyTimeSec,
         drugApplyToleranceSec,
@@ -248,7 +227,7 @@
 
   function buildRequest(): PlotRequest {
     return {
-      rootPath, l1, l2, l3, displayMode, overlay, useGroupColor, showDropLines,
+      rootPath, experimentName, displayMode, overlay, useGroupColor, showDropLines,
       legendStyle, showGroup, showBase, showDelta,
       groupColor: nextGroupColor(),
       baselineDurationSec,
@@ -260,9 +239,9 @@
   }
 
   async function plotData() {
-    if (!l1 || !l2 || !l3) {
+    if (!experimentName) {
       statusTone = "error";
-      statusMessage = "Please select all folder levels.";
+      statusMessage = "Please select an experiment folder.";
       return;
     }
     busy = true;
@@ -332,7 +311,7 @@
     }
     busy = true;
     try {
-      const suggestedName = `${l1 || "plot"}-${l2 || "plot"}-${l3 || "plot"}.png`.replace(/\s+/g, "-").toLowerCase();
+      const suggestedName = `${experimentName || "plot"}.png`.replace(/\s+/g, "-").toLowerCase();
       const exportPath = await chooseExportPath(suggestedName);
       if (!exportPath) { statusMessage = "Export cancelled."; return; }
       const dataUrl = await Plotly.toImage(plotHost, { format: "png", width: 1800, height: 1000, scale: 2 });
@@ -350,9 +329,9 @@
   // ── Statistics ───────────────────────────────────────────────────────────────
 
   async function computeStatistics() {
-    if (!l1 || !l2) {
+    if (!rootPath.trim()) {
       statusTone = "error";
-      statusMessage = "Please select L1 and L2 folder levels to run statistics.";
+      statusMessage = "Please choose a root folder to run statistics.";
       return;
     }
     busyStats = true;
@@ -363,7 +342,7 @@
     statusMessage = "Running statistical analysis...";
     try {
       const req: StatisticsRequest = {
-        rootPath, l1, l2,
+        rootPath,
         baselineDurationSec, drugApplyTimeSec, drugApplyToleranceSec, baselineWarningThresholdPct,
       };
       const result = await runStatistics(req);
@@ -384,7 +363,7 @@
     if (!statsCsv) return;
     busy = true;
     try {
-      const suggestedName = `${l1 || "stats"}-${l2 || "stats"}-statistics.csv`.replace(/\s+/g, "-").toLowerCase();
+      const suggestedName = `${experimentName || "root"}-statistics.csv`.replace(/\s+/g, "-").toLowerCase();
       const exportPath = await chooseCsvExportPath(suggestedName);
       if (!exportPath) { statusMessage = "CSV export cancelled."; return; }
       await writeTextFile(exportPath, statsCsv);
@@ -427,19 +406,9 @@
 
     <!-- Folder selection -->
     <section class="card">
-      <label for="l1-select">Step 1: Folder</label>
-      <select id="l1-select" bind:value={l1} size="4" on:change={handleL1Change} disabled={busy}>
-        {#each l1Options as option}<option value={option}>{option}</option>{/each}
-      </select>
-
-      <label for="l2-select">Step 2: Volume</label>
-      <select id="l2-select" bind:value={l2} size="4" on:change={handleL2Change} disabled={busy}>
-        {#each l2Options as option}<option value={option}>{option}</option>{/each}
-      </select>
-
-      <label for="l3-select">Step 3: Solution</label>
-      <select id="l3-select" bind:value={l3} size="4" on:change={handleL3Change} disabled={busy}>
-        {#each l3Options as option}<option value={option}>{option}</option>{/each}
+      <label for="experiment-select">Experiment Folder</label>
+      <select id="experiment-select" bind:value={experimentName} size="8" on:change={handleExperimentChange} disabled={busy}>
+        {#each experimentOptions as option}<option value={option}>{option}</option>{/each}
       </select>
     </section>
 
@@ -502,7 +471,7 @@
               <button
                 class="tiny-btn"
                 on:click={() => toggleExcludeSample(info)}
-                disabled={busy || (!info.included === false && sampleListResponse!.currentExclusions >= sampleListResponse!.maxExclusions && !sampleListResponse!.dixonExceptionAvailable)}
+                disabled={isSampleToggleDisabled(info)}
               >
                 {info.included ? "Exclude" : "Restore"}
               </button>

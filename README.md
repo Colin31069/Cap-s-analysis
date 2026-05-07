@@ -268,3 +268,5 @@ python3 -m py_compile main.py skin_analysis/*.py
 - 先執行 `cd "Python version" && python3 tk_macos_smoke_test.py`
 - 若 smoke test 也有問題，通常是本機 Python/Tk 環境，不是主程式邏輯
 - 詳細處理方式請看 [MACOS_GUI_FIXES.md](./MACOS_GUI_FIXES.md)
+
+Tauri folder layout note: the desktop-tauri edition now matches the Python edition. The selected root path is scanned for direct child experiment folders, and each experiment folder contains its `.xlsx` sample files plus optional `.skin_analysis_metadata.json`.

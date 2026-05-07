@@ -5,14 +5,10 @@ export type LegendStyle = "Simple" | "Detailed";
 
 export interface FolderLevelsRequest {
   rootPath: string;
-  l1?: string | null;
-  l2?: string | null;
 }
 
 export interface FolderLevelsResponse {
-  l1Options: string[];
-  l2Options: string[];
-  l3Options: string[];
+  experimentOptions: string[];
 }
 
 // ── Metadata ───────────────────────────────────────────────────────────────────
@@ -61,9 +57,7 @@ export interface ListSamplesResponse {
 
 export interface PlotRequest {
   rootPath: string;
-  l1: string;
-  l2: string;
-  l3: string;
+  experimentName: string;
   displayMode: DisplayMode;
   overlay: boolean;
   useGroupColor: boolean;
@@ -106,8 +100,6 @@ export interface PlotResponse {
 
 export interface StatisticsRequest {
   rootPath: string;
-  l1: string;
-  l2: string;
   baselineDurationSec: number;
   drugApplyTimeSec: number;
   drugApplyToleranceSec: number;

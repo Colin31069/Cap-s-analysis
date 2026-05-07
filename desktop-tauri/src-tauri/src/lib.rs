@@ -13,7 +13,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .invoke_handler(tauri::generate_handler![
-            commands::list_folder_levels,
+            commands::list_experiment_folders,
             commands::load_metadata,
             commands::save_metadata,
             commands::list_samples_in_folder,

@@ -98,16 +98,12 @@ pub struct ExperimentMetadata {
 #[serde(rename_all = "camelCase")]
 pub struct FolderLevelsRequest {
     pub root_path: String,
-    pub l1: Option<String>,
-    pub l2: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct FolderLevelsResponse {
-    pub l1_options: Vec<String>,
-    pub l2_options: Vec<String>,
-    pub l3_options: Vec<String>,
+    pub experiment_options: Vec<String>,
 }
 
 // ── Sample list ────────────────────────────────────────────────────────────────
@@ -138,9 +134,7 @@ pub struct ListSamplesResponse {
 #[serde(rename_all = "camelCase")]
 pub struct PlotRequest {
     pub root_path: String,
-    pub l1: String,
-    pub l2: String,
-    pub l3: String,
+    pub experiment_name: String,
     pub display_mode: String,
     pub overlay: bool,
     pub use_group_color: bool,
@@ -210,8 +204,6 @@ pub struct PlotResponse {
 #[serde(rename_all = "camelCase")]
 pub struct StatisticsRequest {
     pub root_path: String,
-    pub l1: String,
-    pub l2: String,
     pub baseline_duration_sec: f64,
     pub drug_apply_time_sec: f64,
     pub drug_apply_tolerance_sec: f64,

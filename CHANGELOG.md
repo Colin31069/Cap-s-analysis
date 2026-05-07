@@ -140,3 +140,15 @@ Append-only record of AI agent changes for this workspace.
 - Summary: Added Dixon Q10 recommended exclusions, Dixon-backed small-n exclusion metadata, ANOVA sensitivity reporting, and a Sample Exclusion button for running Dixon Q on the selected experiment folder.
 - Files: `Python version/skin_analysis/config.py`, `Python version/skin_analysis/models.py`, `Python version/skin_analysis/metadata.py`, `Python version/skin_analysis/exclusions.py`, `Python version/skin_analysis/statistics.py`, `Python version/skin_analysis/gui.py`, `Python version/tests/test_exclusions.py`, `Python version/tests/test_metadata.py`, `Python version/tests/test_statistics.py`, `README.md`, `ANALYSIS_METHOD.md`, `CHANGELOG.md`
 - Verification: `cd "Python version" && ./.venv-gui/bin/python -m unittest tests.test_statistics tests.test_metadata tests.test_exclusions` (pass; SciPy emitted an expected Shapiro warning for identical test data); `cd "Python version" && ./.venv-gui/bin/python -m unittest discover` (pass; SciPy emitted an expected Shapiro warning for identical test data); `cd "Python version" && ./.venv-gui/bin/python -m py_compile main.py skin_analysis/*.py` (pass); `git diff --check` (pass)
+
+## 2026-05-07 09:28 +08:00
+
+- Summary: Fixed the Tauri Svelte sample exclusion button disabled expression so Vite can parse the app and restore buttons remain available at the exclusion cap.
+- Files: `desktop-tauri/src/App.svelte`, `CHANGELOG.md`
+- Verification: `cd "desktop-tauri" && npm run build` (pass; existing Svelte accessibility/CSS warnings and Rollup chunk-size warning remain).
+
+## 2026-05-07 09:38 +08:00
+
+- Summary: Updated the Tauri edition to match the Python edition's current experiment-folder layout: the root path now lists direct experiment folders, plotting/sample metadata read `root/experiment`, and statistics scan every direct child folder under the selected root.
+- Files: `desktop-tauri/src/App.svelte`, `desktop-tauri/src/lib/api.ts`, `desktop-tauri/src/lib/types.ts`, `desktop-tauri/src-tauri/src/commands.rs`, `desktop-tauri/src-tauri/src/lib.rs`, `desktop-tauri/src-tauri/src/models.rs`, `desktop-tauri/src-tauri/src/plotting.rs`, `README.md`, `CHANGELOG.md`
+- Verification: `cd "desktop-tauri" && npm run build` (pass; existing Svelte accessibility/CSS warnings and Rollup chunk-size warning remain); `cd "desktop-tauri/src-tauri" && cargo test` (pass; 23 unit tests + 1 parity integration test).
