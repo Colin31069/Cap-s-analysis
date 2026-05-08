@@ -2,6 +2,24 @@
 
 Append-only record of AI agent changes for this workspace.
 
+## 2026-05-08 15:34 +08:00
+
+- Summary: Ignored the local `.claudeskill/` folder so it is excluded from Git commits.
+- Files: `.gitignore`, `CHANGELOG.md`
+- Verification: `git status --short` (confirmed `.claudeskill/` is no longer listed as an untracked folder); `git diff --check` (pass; Windows line-ending warnings only).
+
+## 2026-05-08 15:25 +08:00
+
+- Summary: Made the Tauri n<5 Sample Exclusion warning more prominent with red bold text and added hover-only warnings on Exclude Selected, Restore Selected, and Run Dixon Q Review explaining that fewer than 5 samples cannot use Dixon Q or data exclusion.
+- Files: `desktop-tauri/src/App.svelte`, `CHANGELOG.md`
+- Verification: `cd "desktop-tauri" && npm run build` (pass; existing Svelte label accessibility warnings and Rollup chunk-size warning remain).
+
+## 2026-05-08 14:46 +08:00
+
+- Summary: Updated the Tauri Sample Exclusion panel so experiment folders with fewer than 5 `.xlsx` samples clearly warn that the data count is too low for exclusion. Exclude Selected and Dixon Q Review are disabled for n<5, and direct exclusion attempts report the same rule.
+- Files: `desktop-tauri/src/App.svelte`, `CHANGELOG.md`
+- Verification: `cd "desktop-tauri" && npm run build` (pass; existing Svelte label accessibility warnings and Rollup chunk-size warning remain).
+
 ## 2026-05-08 10:22 +08:00
 
 - Summary: Added a Python-style selected Excel sample exclusion control to the Tauri frontend. The Sample Exclusion panel now shows a selectable `.xlsx` list with `[IN]` / `[OUT]` status and dedicated `Exclude Selected` / `Restore Selected` buttons while preserving the existing metadata-backed exclusion behavior.

@@ -237,6 +237,11 @@
       excluded = excluded.filter((e) => e.fileName.toLowerCase() !== info.fileName.toLowerCase());
     } else {
       // exclude: add to excluded list
+      if (sampleListResponse.samples.length < 5) {
+        statusTone = "warning";
+        statusMessage = `Data count is ${sampleListResponse.samples.length}; at least 5 samples are required before exclusion.`;
+        return;
+      }
       if (sampleListResponse.currentExclusions >= sampleListResponse.maxExclusions) {
         statusTone = "error";
         statusMessage = `Cannot exclude: max ${sampleListResponse.maxExclusions} exclusion(s) allowed for n=${sampleListResponse.samples.length}.`;
@@ -254,10 +259,20 @@
     return sampleListResponse.samples.find((s) => s.fileName === selectedSampleFileName) ?? null;
   }
 
+  function hasTooFewSamplesForExclusion(): boolean {
+    return Boolean(sampleListResponse && sampleListResponse.samples.length < 5);
+  }
+
+  function tooFewSamplesMessage(): string {
+    const count = sampleListResponse?.samples.length ?? 0;
+    return `Data count is ${count}; fewer than 5 samples, so Dixon Q test and data exclusion cannot be used.`;
+  }
+
   function canExcludeSelected(): boolean {
     const info = selectedSampleInfo();
     if (!info || !info.included || busy) return false;
     if (!sampleListResponse) return false;
+    if (hasTooFewSamplesForExclusion()) return false;
     return sampleListResponse.currentExclusions < sampleListResponse.maxExclusions;
   }
 
@@ -602,14 +617,17 @@
 
       <!-- Sample exclusion -->
       {#if sampleListResponse && sampleListResponse.samples.length > 0}
-        <div class="panel">
+        <div class="panel sample-exclusion-panel">
           <div class="panel-lbl">
             Sample Exclusion
             <span class="badge badge-dim">{sampleListResponse.currentExclusions}/{sampleListResponse.maxExclusions}</span>
-            {#if sampleListResponse.dixonExceptionAvailable}
-              <span class="badge badge-blue">DQ avail</span>
+            {#if hasTooFewSamplesForExclusion()}
+              <span class="badge badge-blue">n&lt;5</span>
             {/if}
           </div>
+          {#if hasTooFewSamplesForExclusion()}
+            <p class="exclusion-warning">{tooFewSamplesMessage()}</p>
+          {/if}
           <select
             class="sample-select"
             bind:value={selectedSampleFileName}
@@ -623,16 +641,25 @@
             {/each}
           </select>
           <div class="sample-actions">
-            <button class="btn btn-danger btn-sm" on:click={excludeSelectedSample} disabled={!canExcludeSelected()}>
-              Exclude Selected
-            </button>
-            <button class="btn btn-restore btn-sm" on:click={restoreSelectedSample} disabled={!canRestoreSelected()}>
-              Restore Selected
-            </button>
+            <span class="action-tip-zone">
+              <button class="btn btn-danger btn-sm" on:click={excludeSelectedSample} disabled={!canExcludeSelected()}>
+                Exclude Selected
+              </button>
+            </span>
+            <span class="action-tip-zone">
+              <button class="btn btn-restore btn-sm" on:click={restoreSelectedSample} disabled={!canRestoreSelected()}>
+                Restore Selected
+              </button>
+            </span>
           </div>
-          <button class="btn btn-ghost btn-sm" on:click={runDixonQ} disabled={busy || busyStats}>
-            Run Dixon Q Review
-          </button>
+          <span class="action-tip-zone">
+            <button class="btn btn-ghost btn-sm btn-full" on:click={runDixonQ} disabled={busy || busyStats || hasTooFewSamplesForExclusion()}>
+              Run Dixon Q Review
+            </button>
+          </span>
+          {#if hasTooFewSamplesForExclusion()}
+            <p class="hover-warning">{tooFewSamplesMessage()}</p>
+          {/if}
         </div>
       {/if}
 
@@ -1073,6 +1100,38 @@
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 5px;
+  }
+
+  .action-tip-zone {
+    display: block;
+    width: 100%;
+  }
+  .action-tip-zone .btn {
+    width: 100%;
+  }
+
+  .exclusion-warning,
+  .hover-warning {
+    color: var(--red);
+    font-size: 11px;
+    font-weight: 800;
+    line-height: 1.35;
+  }
+
+  .exclusion-warning {
+    padding: 3px 0 2px;
+  }
+
+  .hover-warning {
+    display: none;
+    padding: 5px 7px;
+    background: var(--red-dim);
+    border: 1px solid rgba(239, 68, 68, 0.22);
+    border-radius: var(--r-xs);
+  }
+
+  .sample-exclusion-panel:has(.action-tip-zone:hover) .hover-warning {
+    display: block;
   }
 
   /* ── Badges ─────────────────────────────────────────────────────── */
