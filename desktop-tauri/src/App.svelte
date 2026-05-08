@@ -3,7 +3,6 @@
   import { open } from "@tauri-apps/plugin-dialog";
   import { writeFile, writeTextFile } from "@tauri-apps/plugin-fs";
   import { getCurrentWindow } from "@tauri-apps/api/window";
-  import Plotly from "plotly.js-dist-min";
 
   import {
     buildPlotPayload,
@@ -15,6 +14,7 @@
     saveMetadata,
   } from "./lib/api";
   import { buildPlotlyFigure, COLOR_PALETTE, dataUrlToBytes, emptyFigure } from "./lib/plot";
+  import { isPlotlyLoaded, loadPlotly } from "./lib/plotly";
   import type { AppTheme } from "./lib/plot";
   import type {
     AppError,
@@ -154,8 +154,10 @@
 
   async function renderPlot() {
     if (!plotHost) return;
+    if (payloads.length === 0 && !isPlotlyLoaded()) return;
     const figure = payloads.length > 0 ? buildPlotlyFigure(payloads, activeTheme) : emptyFigure(activeTheme);
-    await Plotly.react(plotHost, figure.data, figure.layout, { responsive: true, displaylogo: false });
+    const plotly = await loadPlotly();
+    await plotly.react(plotHost, figure.data, figure.layout, { responsive: true, displaylogo: false });
   }
 
   async function toggleTheme() {
@@ -421,7 +423,8 @@
       const suggestedName = `${experimentName || "plot"}.png`.replace(/\s+/g, "-").toLowerCase();
       const exportPath = await chooseExportPath(suggestedName);
       if (!exportPath) { statusMessage = "Export cancelled."; return; }
-      const dataUrl = await Plotly.toImage(plotHost, { format: "png", width: 1800, height: 1000, scale: 2 });
+      const plotly = await loadPlotly();
+      const dataUrl = await plotly.toImage(plotHost, { format: "png", width: 1800, height: 1000, scale: 2 });
       await writeFile(exportPath, dataUrlToBytes(dataUrl));
       statusTone = "neutral";
       statusMessage = `Saved plot to ${exportPath}`;

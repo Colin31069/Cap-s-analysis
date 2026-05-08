@@ -194,3 +194,15 @@ Append-only record of AI agent changes for this workspace.
 - Summary: Updated the Tauri edition to match the Python edition's current experiment-folder layout: the root path now lists direct experiment folders, plotting/sample metadata read `root/experiment`, and statistics scan every direct child folder under the selected root.
 - Files: `desktop-tauri/src/App.svelte`, `desktop-tauri/src/lib/api.ts`, `desktop-tauri/src/lib/types.ts`, `desktop-tauri/src-tauri/src/commands.rs`, `desktop-tauri/src-tauri/src/lib.rs`, `desktop-tauri/src-tauri/src/models.rs`, `desktop-tauri/src-tauri/src/plotting.rs`, `README.md`, `CHANGELOG.md`
 - Verification: `cd "desktop-tauri" && npm run build` (pass; existing Svelte accessibility/CSS warnings and Rollup chunk-size warning remain); `cd "desktop-tauri/src-tauri" && cargo test` (pass; 23 unit tests + 1 parity integration test).
+
+## 2026-05-08 17:16 +08:00
+
+- Summary: Optimized the Tauri edition startup path by moving Plotly out of the initial Vite/Rollup bundle and loading the local vendor asset only when a plot is first rendered or exported.
+- Files: `.gitignore`, `desktop-tauri/package.json`, `desktop-tauri/scripts/sync-plotly-vendor.mjs`, `desktop-tauri/src/App.svelte`, `desktop-tauri/src/lib/plotly.ts`, `desktop-tauri/src/vite-env.d.ts`, `desktop-tauri/README.md`, `CHANGELOG.md`
+- Verification: `cd "desktop-tauri" && npm run build` (pass in 10.75s; existing Svelte accessibility warnings remain); `cd "desktop-tauri/src-tauri" && cargo test` (pass in 63.19s); `npm run dev -- --host 127.0.0.1` reached Vite ready in 4.29s; `git diff --check` (pass; line-ending warnings only).
+
+## 2026-05-08 18:21 +08:00
+
+- Summary: Added Tauri packaging dependency preparation scripts for local npm/Cargo cache warmup and optional project-local Cargo vendoring, plus faster Windows release build commands.
+- Files: `.gitignore`, `desktop-tauri/package.json`, `desktop-tauri/scripts/prepare-build-deps.mjs`, `desktop-tauri/scripts/vendor-cargo-deps.mjs`, `desktop-tauri/src-tauri/Cargo.toml`, `desktop-tauri/src-tauri/tauri.conf.json`, `desktop-tauri/README.md`, `CHANGELOG.md`
+- Verification: `cd "desktop-tauri" && npm run deps:prepare` (pass; npm packages, Plotly vendor asset, and Cargo crates available locally); `cd "desktop-tauri" && npm run deps:vendor -- --refresh` (pass; generated local `src-tauri/vendor/` mirror); `cd "desktop-tauri/src-tauri" && cargo fetch --locked --offline` (pass); `cd "desktop-tauri" && npm run tauri:build:exe` (pass in 584.51s after release profile/cache change); `cd "desktop-tauri" && npm run tauri:build:exe` second run (pass in 122.97s); `cd "desktop-tauri" && npm run tauri:build:exe:cached` (pass in 64.74s).

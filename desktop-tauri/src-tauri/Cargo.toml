@@ -25,3 +25,11 @@ tauri-plugin-fs = "2"
 approx = "0.5"
 rust_xlsxwriter = "0.81"
 tempfile = "3"
+
+[profile.release]
+opt-level = 1
+lto = false
+codegen-units = 256
+incremental = true
+debug = 0
+strip = "debuginfo"
