@@ -8,6 +8,12 @@ Append-only record of AI agent changes for this workspace.
 - Files: `desktop-tauri/src/App.svelte`, `CHANGELOG.md`
 - Verification: `cd "desktop-tauri" && npm run build` (pass; existing Svelte label accessibility warnings and Rollup chunk-size warning remain).
 
+## 2026-05-08 10:18 +08:00
+
+- Summary: Added a first-launch Tauri theme picker with Light, Dark, and Follow OS choices, persisted the selection locally, and updated Plotly colors to follow the active theme.
+- Files: `desktop-tauri/src/App.svelte`, `desktop-tauri/src/lib/plot.ts`, `desktop-tauri/src-tauri/capabilities/default.json`, `desktop-tauri/src-tauri/gen/schemas/capabilities.json`, `CHANGELOG.md`
+- Verification: `cd "desktop-tauri" && npm run build` (pass; existing Svelte accessibility/CSS warnings and Rollup chunk-size warning remain); `cd "desktop-tauri/src-tauri" && cargo test` (pass; 23 unit tests + 1 parity integration test).
+
 ## 2026-05-07 Asia/Taipei (update 2)
 
 - Summary: Added light/dark theme toggle to Tauri/Svelte frontend. Sun icon (switch to light) / Moon icon (switch to dark) button in sidebar header. Plotly chart re-renders with theme-matched colors on toggle. Light theme uses slate-blue surfaces (#F1F5F9 bg, #FFFFFF cards) with dark green accent (#16A34A) and dark text (#0F172A). No application logic changes.

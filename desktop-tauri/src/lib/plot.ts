@@ -1,5 +1,7 @@
 import type { PlotResponse } from "./types";
 
+export type AppTheme = "light" | "dark";
+
 export const COLOR_PALETTE = [
   "#1f77b4",
   "#ff7f0e",
@@ -22,45 +24,68 @@ function mapLineStyle(style: string): string {
 
 const DARK = {
   paper: "#141D2E",
-  plot:  "#0F172A",
-  grid:  "#1E293B",
-  zero:  "#2D3F5A",
-  font:  "#94A3B8",
-  legendBg:     "rgba(20,29,46,0.92)",
+  plot: "#0F172A",
+  grid: "#1E293B",
+  zero: "#2D3F5A",
+  font: "#94A3B8",
+  legendBg: "rgba(20,29,46,0.92)",
   legendBorder: "#253450",
 };
 
 const LIGHT = {
   paper: "#FFFFFF",
-  plot:  "#F8FAFC",
-  grid:  "#E2E8F0",
-  zero:  "#CBD5E1",
-  font:  "#475569",
-  legendBg:     "rgba(255,255,255,0.96)",
+  plot: "#F8FAFC",
+  grid: "#E2E8F0",
+  zero: "#CBD5E1",
+  font: "#475569",
+  legendBg: "rgba(255,255,255,0.96)",
   legendBorder: "#CBD5E1",
 };
 
-export function emptyFigure(isDark = true) {
-  const T = isDark ? DARK : LIGHT;
+function plotTheme(theme: AppTheme) {
+  return theme === "dark" ? DARK : LIGHT;
+}
+
+export function emptyFigure(theme: AppTheme = "dark") {
+  const t = plotTheme(theme);
   return {
     data: [],
     layout: {
-      title: { text: "Ready", font: { color: T.font } },
-      paper_bgcolor: T.paper,
-      plot_bgcolor:  T.plot,
-      font: { family: "-apple-system, 'Segoe UI', system-ui, sans-serif", color: T.font },
-      xaxis: { title: "Time relative to drop (s)", gridcolor: T.grid, zerolinecolor: T.zero, color: T.font },
-      yaxis: { title: "Value", gridcolor: T.grid, zerolinecolor: T.zero, color: T.font },
+      title: { text: "Ready", font: { color: t.font } },
+      paper_bgcolor: t.paper,
+      plot_bgcolor: t.plot,
+      font: { family: "-apple-system, 'Segoe UI', system-ui, sans-serif", color: t.font },
+      xaxis: {
+        title: "Time relative to drop (s)",
+        gridcolor: t.grid,
+        zerolinecolor: t.zero,
+        color: t.font,
+      },
+      yaxis: {
+        title: "Value",
+        gridcolor: t.grid,
+        zerolinecolor: t.zero,
+        color: t.font,
+      },
       margin: { l: 70, r: 220, t: 70, b: 70 },
-      legend: { x: 1.02, y: 1, xanchor: "left", yanchor: "top", bgcolor: T.legendBg, bordercolor: T.legendBorder, borderwidth: 1, font: { color: T.font, size: 11 } },
+      legend: {
+        x: 1.02,
+        y: 1,
+        xanchor: "left",
+        yanchor: "top",
+        bgcolor: t.legendBg,
+        bordercolor: t.legendBorder,
+        borderwidth: 1,
+        font: { color: t.font, size: 11 },
+      },
     },
   };
 }
 
-export function buildPlotlyFigure(payloads: PlotResponse[], isDark = true) {
-  if (payloads.length === 0) return emptyFigure(isDark);
-  const T = isDark ? DARK : LIGHT;
+export function buildPlotlyFigure(payloads: PlotResponse[], theme: AppTheme = "dark") {
+  if (payloads.length === 0) return emptyFigure(theme);
 
+  const t = plotTheme(theme);
   const data: Record<string, unknown>[] = [];
   const shapes: Record<string, unknown>[] = [];
   const latest = payloads[payloads.length - 1];
@@ -73,7 +98,6 @@ export function buildPlotlyFigure(payloads: PlotResponse[], isDark = true) {
       const traceColor = series.color ?? COLOR_PALETTE[0];
 
       if (isGroupLegend) {
-        // Invisible marker trace just to put a colored swatch in the legend
         data.push({
           type: "scatter",
           mode: "markers",
@@ -101,7 +125,6 @@ export function buildPlotlyFigure(payloads: PlotResponse[], isDark = true) {
         hovertemplate: `${series.legendLabel}<br>t=%{x:.2f}s<br>Value=%{y:.3f}<extra></extra>`,
       });
 
-      // Drop lines at x=0 because time is now drop-aligned
       if (payload.settings.displayMode !== "Base" && payload.settings.showDropLines) {
         shapes.push({
           type: "line",
@@ -117,7 +140,6 @@ export function buildPlotlyFigure(payloads: PlotResponse[], isDark = true) {
     }
   }
 
-  // Deduplicate vertical drop lines at x=0
   const seenShapes = new Set<string>();
   const uniqueShapes = shapes.filter((s) => {
     const key = JSON.stringify(s);
@@ -129,24 +151,24 @@ export function buildPlotlyFigure(payloads: PlotResponse[], isDark = true) {
   return {
     data,
     layout: {
-      title: { text: title, font: { color: T.font } },
-      paper_bgcolor: T.paper,
-      plot_bgcolor:  T.plot,
-      font: { family: "-apple-system, 'Segoe UI', system-ui, sans-serif", color: T.font },
+      title: { text: title, font: { color: t.font } },
+      paper_bgcolor: t.paper,
+      plot_bgcolor: t.plot,
+      font: { family: "-apple-system, 'Segoe UI', system-ui, sans-serif", color: t.font },
       xaxis: {
-        title: { text: "Time relative to drop (s)", font: { color: T.font } },
-        gridcolor: T.grid,
-        zerolinecolor: T.zero,
+        title: { text: "Time relative to drop (s)", font: { color: t.font } },
+        gridcolor: t.grid,
+        zerolinecolor: t.zero,
         zeroline: true,
-        color: T.font,
-        linecolor: T.grid,
+        color: t.font,
+        linecolor: t.grid,
       },
       yaxis: {
-        title: { text: latest.yUnit, font: { color: T.font } },
-        gridcolor: T.grid,
-        zerolinecolor: T.zero,
-        color: T.font,
-        linecolor: T.grid,
+        title: { text: latest.yUnit, font: { color: t.font } },
+        gridcolor: t.grid,
+        zerolinecolor: t.zero,
+        color: t.font,
+        linecolor: t.grid,
       },
       shapes: uniqueShapes,
       showlegend: true,
@@ -155,10 +177,10 @@ export function buildPlotlyFigure(payloads: PlotResponse[], isDark = true) {
         y: 1,
         xanchor: "left",
         yanchor: "top",
-        bgcolor: T.legendBg,
-        bordercolor: T.legendBorder,
+        bgcolor: t.legendBg,
+        bordercolor: t.legendBorder,
         borderwidth: 1,
-        font: { size: 11, color: T.font },
+        font: { size: 11, color: t.font },
       },
       margin: { l: 70, r: 260, t: 70, b: 70 },
     },
