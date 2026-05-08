@@ -20,23 +20,46 @@ function mapLineStyle(style: string): string {
   return "solid";
 }
 
-export function emptyFigure() {
+const DARK = {
+  paper: "#141D2E",
+  plot:  "#0F172A",
+  grid:  "#1E293B",
+  zero:  "#2D3F5A",
+  font:  "#94A3B8",
+  legendBg:     "rgba(20,29,46,0.92)",
+  legendBorder: "#253450",
+};
+
+const LIGHT = {
+  paper: "#FFFFFF",
+  plot:  "#F8FAFC",
+  grid:  "#E2E8F0",
+  zero:  "#CBD5E1",
+  font:  "#475569",
+  legendBg:     "rgba(255,255,255,0.96)",
+  legendBorder: "#CBD5E1",
+};
+
+export function emptyFigure(isDark = true) {
+  const T = isDark ? DARK : LIGHT;
   return {
     data: [],
     layout: {
-      title: "Ready",
-      paper_bgcolor: "#fffdf8",
-      plot_bgcolor: "#fffdf8",
-      xaxis: { title: "Time relative to drop (s)", gridcolor: "#d7d0c4" },
-      yaxis: { title: "Value", gridcolor: "#d7d0c4" },
+      title: { text: "Ready", font: { color: T.font } },
+      paper_bgcolor: T.paper,
+      plot_bgcolor:  T.plot,
+      font: { family: "-apple-system, 'Segoe UI', system-ui, sans-serif", color: T.font },
+      xaxis: { title: "Time relative to drop (s)", gridcolor: T.grid, zerolinecolor: T.zero, color: T.font },
+      yaxis: { title: "Value", gridcolor: T.grid, zerolinecolor: T.zero, color: T.font },
       margin: { l: 70, r: 220, t: 70, b: 70 },
-      legend: { x: 1.02, y: 1, xanchor: "left", yanchor: "top" },
+      legend: { x: 1.02, y: 1, xanchor: "left", yanchor: "top", bgcolor: T.legendBg, bordercolor: T.legendBorder, borderwidth: 1, font: { color: T.font, size: 11 } },
     },
   };
 }
 
-export function buildPlotlyFigure(payloads: PlotResponse[]) {
-  if (payloads.length === 0) return emptyFigure();
+export function buildPlotlyFigure(payloads: PlotResponse[], isDark = true) {
+  if (payloads.length === 0) return emptyFigure(isDark);
+  const T = isDark ? DARK : LIGHT;
 
   const data: Record<string, unknown>[] = [];
   const shapes: Record<string, unknown>[] = [];
@@ -106,20 +129,24 @@ export function buildPlotlyFigure(payloads: PlotResponse[]) {
   return {
     data,
     layout: {
-      title,
-      paper_bgcolor: "#fffdf8",
-      plot_bgcolor: "#fffdf8",
-      font: { family: "Avenir Next, Helvetica Neue, sans-serif", color: "#30271c" },
+      title: { text: title, font: { color: T.font } },
+      paper_bgcolor: T.paper,
+      plot_bgcolor:  T.plot,
+      font: { family: "-apple-system, 'Segoe UI', system-ui, sans-serif", color: T.font },
       xaxis: {
-        title: "Time relative to drop (s)",
-        gridcolor: "#d7d0c4",
-        zerolinecolor: "#c3b8a5",
+        title: { text: "Time relative to drop (s)", font: { color: T.font } },
+        gridcolor: T.grid,
+        zerolinecolor: T.zero,
         zeroline: true,
+        color: T.font,
+        linecolor: T.grid,
       },
       yaxis: {
-        title: latest.yUnit,
-        gridcolor: "#d7d0c4",
-        zerolinecolor: "#c3b8a5",
+        title: { text: latest.yUnit, font: { color: T.font } },
+        gridcolor: T.grid,
+        zerolinecolor: T.zero,
+        color: T.font,
+        linecolor: T.grid,
       },
       shapes: uniqueShapes,
       showlegend: true,
@@ -128,10 +155,10 @@ export function buildPlotlyFigure(payloads: PlotResponse[]) {
         y: 1,
         xanchor: "left",
         yanchor: "top",
-        bgcolor: "rgba(255,253,248,0.85)",
-        bordercolor: "#dfd6c6",
+        bgcolor: T.legendBg,
+        bordercolor: T.legendBorder,
         borderwidth: 1,
-        font: { size: 11 },
+        font: { size: 11, color: T.font },
       },
       margin: { l: 70, r: 260, t: 70, b: 70 },
     },

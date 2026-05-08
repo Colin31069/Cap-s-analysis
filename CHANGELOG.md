@@ -2,6 +2,24 @@
 
 Append-only record of AI agent changes for this workspace.
 
+## 2026-05-08 10:22 +08:00
+
+- Summary: Added a Python-style selected Excel sample exclusion control to the Tauri frontend. The Sample Exclusion panel now shows a selectable `.xlsx` list with `[IN]` / `[OUT]` status and dedicated `Exclude Selected` / `Restore Selected` buttons while preserving the existing metadata-backed exclusion behavior.
+- Files: `desktop-tauri/src/App.svelte`, `CHANGELOG.md`
+- Verification: `cd "desktop-tauri" && npm run build` (pass; existing Svelte label accessibility warnings and Rollup chunk-size warning remain).
+
+## 2026-05-07 Asia/Taipei (update 2)
+
+- Summary: Added light/dark theme toggle to Tauri/Svelte frontend. Sun icon (switch to light) / Moon icon (switch to dark) button in sidebar header. Plotly chart re-renders with theme-matched colors on toggle. Light theme uses slate-blue surfaces (#F1F5F9 bg, #FFFFFF cards) with dark green accent (#16A34A) and dark text (#0F172A). No application logic changes.
+- Files: `desktop-tauri/src/App.svelte`, `desktop-tauri/src/lib/plot.ts`
+- Verification: Visual-only changes; all TypeScript bindings and Svelte reactive variables untouched.
+
+## 2026-05-07 Asia/Taipei
+
+- Summary: Complete dark-mode UI redesign for Tauri/Svelte frontend using ui-ux-pro-max skill. Applied Developer Tool / IDE dark color palette (#0B1120 background, #22C55E green accent). Redesigned sidebar as a proper panel system with pinned action footer, chevron collapsibles, styled radio/checkbox groups with active highlighting, sample dot indicators (green=included, red=excluded), glow-effect primary CTA button, spinner for busy state, and slim status bar with semantic dot indicator. Updated Plotly chart theme to dark (navy background, slate grid lines, muted labels). All application logic preserved without changes.
+- Files: `desktop-tauri/src/App.svelte`, `desktop-tauri/src/app.css`, `desktop-tauri/src/lib/plot.ts`
+- Verification: No logic changes — all TypeScript bindings and Svelte reactive variables untouched; visual-only.
+
 ## 2026-05-06 Asia/Taipei
 
 - Summary: Ported all Python-version features to the Tauri version: configurable timing parameters, apply-window drop detection, baseline accuracy warnings, drop-aligned time axis (t=0 at drop), metadata persistence (.skin_analysis_metadata.json), sample exclusion system with Dixon Q exception, group statistics + one-way ANOVA + Brown-Forsythe variance check + Dixon Q10 review + robust outlier (MAD) review + CSV export, overlay group legend with medicine summary, medicine metadata UI, timing parameters UI, statistics panel. Also added Tauri version usage section to README.md.
