@@ -2,6 +2,12 @@
 
 Append-only record of AI agent changes for this workspace.
 
+## 2026-05-08 10:18 +08:00
+
+- Summary: Added a first-launch Tauri theme picker with Light, Dark, and Follow OS choices, persisted the selection locally, and updated Plotly colors to follow the active theme.
+- Files: `desktop-tauri/src/App.svelte`, `desktop-tauri/src/lib/plot.ts`, `desktop-tauri/src-tauri/capabilities/default.json`, `desktop-tauri/src-tauri/gen/schemas/capabilities.json`, `CHANGELOG.md`
+- Verification: `cd "desktop-tauri" && npm run build` (pass; existing Svelte accessibility/CSS warnings and Rollup chunk-size warning remain); `cd "desktop-tauri/src-tauri" && cargo test` (pass; 23 unit tests + 1 parity integration test).
+
 ## 2026-05-06 Asia/Taipei
 
 - Summary: Ported all Python-version features to the Tauri version: configurable timing parameters, apply-window drop detection, baseline accuracy warnings, drop-aligned time axis (t=0 at drop), metadata persistence (.skin_analysis_metadata.json), sample exclusion system with Dixon Q exception, group statistics + one-way ANOVA + Brown-Forsythe variance check + Dixon Q10 review + robust outlier (MAD) review + CSV export, overlay group legend with medicine summary, medicine metadata UI, timing parameters UI, statistics panel. Also added Tauri version usage section to README.md.

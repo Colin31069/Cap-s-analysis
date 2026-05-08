@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import { open } from "@tauri-apps/plugin-dialog";
   import { writeFile, writeTextFile } from "@tauri-apps/plugin-fs";
+  import { getCurrentWindow } from "@tauri-apps/api/window";
   import Plotly from "plotly.js-dist-min";
 
   import {
@@ -14,6 +15,7 @@
     saveMetadata,
   } from "./lib/api";
   import { buildPlotlyFigure, COLOR_PALETTE, dataUrlToBytes, emptyFigure } from "./lib/plot";
+  import type { AppTheme } from "./lib/plot";
   import type {
     AppError,
     DisplayMode,
@@ -27,6 +29,8 @@
   } from "./lib/types";
 
   const DEFAULT_ROOT_PATH = "/Users/k/Downloads/20260303";
+  const THEME_PREFERENCE_KEY = "skin-analysis.theme-preference";
+  type ThemePreference = "light" | "dark" | "system";
 
   // ── Path & folder selection ──────────────────────────────────────────────────
   let rootPath = DEFAULT_ROOT_PATH;
@@ -76,6 +80,12 @@
   let overlayColorIndex = 0;
   let plotHost: HTMLDivElement;
 
+  // Theme
+  let themePreference: ThemePreference | null = null;
+  let activeTheme: AppTheme = "light";
+  let showThemePrompt = false;
+  let systemThemeQuery: MediaQueryList | null = null;
+
   // ── Helpers ──────────────────────────────────────────────────────────────────
 
   function selectOrFirst(current: string, options: string[]): string {
@@ -88,9 +98,59 @@
     return [rootPath, experimentName].join("/");
   }
 
+  function resolveTheme(preference: ThemePreference): AppTheme {
+    if (preference === "system") return systemThemeQuery?.matches ? "dark" : "light";
+    return preference;
+  }
+
+  async function applyTheme(preference: ThemePreference) {
+    activeTheme = resolveTheme(preference);
+    document.documentElement.dataset.theme = activeTheme;
+    document.documentElement.style.colorScheme = activeTheme;
+
+    try {
+      await getCurrentWindow().setTheme(preference === "system" ? null : activeTheme);
+    } catch (e) {
+      console.warn("Unable to apply native window theme:", e);
+    }
+
+    await renderPlot();
+  }
+
+  function initializeTheme(): () => void {
+    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+    systemThemeQuery = mediaQuery;
+    const savedPreference = localStorage.getItem(THEME_PREFERENCE_KEY) as ThemePreference | null;
+    if (savedPreference === "light" || savedPreference === "dark" || savedPreference === "system") {
+      themePreference = savedPreference;
+      void applyTheme(savedPreference);
+    } else {
+      themePreference = null;
+      showThemePrompt = true;
+      activeTheme = mediaQuery.matches ? "dark" : "light";
+      document.documentElement.dataset.theme = activeTheme;
+      document.documentElement.style.colorScheme = activeTheme;
+    }
+
+    const handleSystemThemeChange = () => {
+      if (themePreference === "system" || themePreference === null) {
+        void applyTheme("system");
+      }
+    };
+    mediaQuery.addEventListener("change", handleSystemThemeChange);
+    return () => mediaQuery.removeEventListener("change", handleSystemThemeChange);
+  }
+
+  async function chooseTheme(preference: ThemePreference) {
+    themePreference = preference;
+    showThemePrompt = false;
+    localStorage.setItem(THEME_PREFERENCE_KEY, preference);
+    await applyTheme(preference);
+  }
+
   async function renderPlot() {
     if (!plotHost) return;
-    const figure = payloads.length > 0 ? buildPlotlyFigure(payloads) : emptyFigure();
+    const figure = payloads.length > 0 ? buildPlotlyFigure(payloads, activeTheme) : emptyFigure(activeTheme);
     await Plotly.react(plotHost, figure.data, figure.layout, { responsive: true, displaylogo: false });
   }
 
@@ -377,9 +437,13 @@
     }
   }
 
-  onMount(async () => {
-    await refreshSelections();
-    await renderPlot();
+  onMount(() => {
+    const cleanupTheme = initializeTheme();
+    void (async () => {
+      await refreshSelections();
+      await renderPlot();
+    })();
+    return cleanupTheme;
   });
 </script>
 
@@ -388,6 +452,29 @@
 </svelte:head>
 
 <div class="shell">
+  {#if showThemePrompt}
+    <div class="theme-backdrop" role="presentation">
+      <section class="theme-dialog" role="dialog" aria-modal="true" aria-labelledby="theme-title">
+        <p class="eyebrow">Appearance</p>
+        <h2 id="theme-title">Choose theme</h2>
+        <div class="theme-choice-row">
+          <button class="theme-choice" on:click={() => chooseTheme("light")}>
+            <strong>Light</strong>
+            <span>Bright interface</span>
+          </button>
+          <button class="theme-choice" on:click={() => chooseTheme("dark")}>
+            <strong>Dark</strong>
+            <span>Low-light interface</span>
+          </button>
+          <button class="theme-choice" on:click={() => chooseTheme("system")}>
+            <strong>Follow OS</strong>
+            <span>Match system</span>
+          </button>
+        </div>
+      </section>
+    </div>
+  {/if}
+
   <aside class="controls">
     <div class="control-header">
       <p class="eyebrow">Tauri / Svelte</p>
@@ -784,5 +871,132 @@
     border: 1px solid #dfd6c6;
     color: #30271c;
     line-height: 1.5;
+  }
+
+  .theme-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    background: rgba(38, 31, 22, 0.42);
+  }
+
+  .theme-dialog {
+    width: min(560px, 100%);
+    background: #fffdf8;
+    border: 1px solid #dfd6c6;
+    border-radius: 8px;
+    box-shadow: 0 24px 70px rgba(34, 26, 16, 0.26);
+    padding: 18px;
+  }
+
+  .theme-dialog h2 {
+    font-size: 18px;
+    margin-bottom: 14px;
+  }
+
+  .theme-choice-row {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .theme-choice {
+    min-height: 84px;
+    border: 1px solid #d7cfc0;
+    background: #f8f4ee;
+    color: #30271c;
+    text-align: left;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 4px;
+  }
+
+  .theme-choice:hover {
+    background: #efe6d8;
+  }
+
+  .theme-choice strong {
+    font-size: 13px;
+  }
+
+  .theme-choice span {
+    font-size: 11px;
+    color: #6b5c47;
+  }
+
+  :global(html[data-theme="dark"] body) {
+    background: #191713;
+    color: #f1e9dc;
+  }
+
+  :global(html[data-theme="dark"]) .controls {
+    background: #201d18;
+    border-right-color: #3d372f;
+  }
+
+  :global(html[data-theme="dark"]) .card,
+  :global(html[data-theme="dark"]) .plot-card,
+  :global(html[data-theme="dark"]) .stats-panel,
+  :global(html[data-theme="dark"]) .theme-dialog {
+    background: #24211c;
+    border-color: #4b4338;
+    color: #f1e9dc;
+  }
+
+  :global(html[data-theme="dark"]) label,
+  :global(html[data-theme="dark"]) h2,
+  :global(html[data-theme="dark"]) .collapsible-toggle,
+  :global(html[data-theme="dark"]) .control-header h1 {
+    color: #f1e9dc;
+  }
+
+  :global(html[data-theme="dark"]) .eyebrow,
+  :global(html[data-theme="dark"]) .subtle,
+  :global(html[data-theme="dark"]) .sample-reason,
+  :global(html[data-theme="dark"]) .theme-choice span {
+    color: #b8aa98;
+  }
+
+  :global(html[data-theme="dark"]) input[type="text"],
+  :global(html[data-theme="dark"]) input:not([type="radio"]):not([type="checkbox"]):not([type="number"]),
+  :global(html[data-theme="dark"]) input[type="number"].number-input,
+  :global(html[data-theme="dark"]) select,
+  :global(html[data-theme="dark"]) .med-field {
+    background: #191713;
+    border-color: #5a5145;
+    color: #f1e9dc;
+  }
+
+  :global(html[data-theme="dark"]) button.secondary,
+  :global(html[data-theme="dark"]) .theme-choice {
+    background: #383127;
+    color: #f1e9dc;
+  }
+
+  :global(html[data-theme="dark"]) button.secondary:hover:not(:disabled),
+  :global(html[data-theme="dark"]) .theme-choice:hover {
+    background: #483f33;
+  }
+
+  :global(html[data-theme="dark"]) .sample-row,
+  :global(html[data-theme="dark"]) .stats-text {
+    background: #191713;
+    border-color: #4b4338;
+    color: #f1e9dc;
+  }
+
+  :global(html[data-theme="dark"]) .sample-row.excluded {
+    background: #382524;
+  }
+
+  @media (max-width: 640px) {
+    .theme-choice-row {
+      grid-template-columns: 1fr;
+    }
   }
 </style>

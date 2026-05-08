@@ -1,5 +1,7 @@
 import type { PlotResponse } from "./types";
 
+export type AppTheme = "light" | "dark";
+
 export const COLOR_PALETTE = [
   "#1f77b4",
   "#ff7f0e",
@@ -20,24 +22,49 @@ function mapLineStyle(style: string): string {
   return "solid";
 }
 
-export function emptyFigure() {
+function plotTheme(theme: AppTheme) {
+  if (theme === "dark") {
+    return {
+      background: "#191713",
+      grid: "#3a352d",
+      zeroLine: "#5d5347",
+      text: "#f1e9dc",
+      legendBackground: "rgba(25,23,19,0.88)",
+      legendBorder: "#4b4338",
+    };
+  }
+
+  return {
+    background: "#fffdf8",
+    grid: "#d7d0c4",
+    zeroLine: "#c3b8a5",
+    text: "#30271c",
+    legendBackground: "rgba(255,253,248,0.85)",
+    legendBorder: "#dfd6c6",
+  };
+}
+
+export function emptyFigure(theme: AppTheme = "light") {
+  const colors = plotTheme(theme);
   return {
     data: [],
     layout: {
       title: "Ready",
-      paper_bgcolor: "#fffdf8",
-      plot_bgcolor: "#fffdf8",
-      xaxis: { title: "Time relative to drop (s)", gridcolor: "#d7d0c4" },
-      yaxis: { title: "Value", gridcolor: "#d7d0c4" },
+      paper_bgcolor: colors.background,
+      plot_bgcolor: colors.background,
+      font: { family: "Avenir Next, Helvetica Neue, sans-serif", color: colors.text },
+      xaxis: { title: "Time relative to drop (s)", gridcolor: colors.grid, zerolinecolor: colors.zeroLine },
+      yaxis: { title: "Value", gridcolor: colors.grid, zerolinecolor: colors.zeroLine },
       margin: { l: 70, r: 220, t: 70, b: 70 },
-      legend: { x: 1.02, y: 1, xanchor: "left", yanchor: "top" },
+      legend: { x: 1.02, y: 1, xanchor: "left", yanchor: "top", bgcolor: colors.legendBackground },
     },
   };
 }
 
-export function buildPlotlyFigure(payloads: PlotResponse[]) {
-  if (payloads.length === 0) return emptyFigure();
+export function buildPlotlyFigure(payloads: PlotResponse[], theme: AppTheme = "light") {
+  if (payloads.length === 0) return emptyFigure(theme);
 
+  const colors = plotTheme(theme);
   const data: Record<string, unknown>[] = [];
   const shapes: Record<string, unknown>[] = [];
   const latest = payloads[payloads.length - 1];
@@ -107,19 +134,19 @@ export function buildPlotlyFigure(payloads: PlotResponse[]) {
     data,
     layout: {
       title,
-      paper_bgcolor: "#fffdf8",
-      plot_bgcolor: "#fffdf8",
-      font: { family: "Avenir Next, Helvetica Neue, sans-serif", color: "#30271c" },
+      paper_bgcolor: colors.background,
+      plot_bgcolor: colors.background,
+      font: { family: "Avenir Next, Helvetica Neue, sans-serif", color: colors.text },
       xaxis: {
         title: "Time relative to drop (s)",
-        gridcolor: "#d7d0c4",
-        zerolinecolor: "#c3b8a5",
+        gridcolor: colors.grid,
+        zerolinecolor: colors.zeroLine,
         zeroline: true,
       },
       yaxis: {
         title: latest.yUnit,
-        gridcolor: "#d7d0c4",
-        zerolinecolor: "#c3b8a5",
+        gridcolor: colors.grid,
+        zerolinecolor: colors.zeroLine,
       },
       shapes: uniqueShapes,
       showlegend: true,
@@ -128,8 +155,8 @@ export function buildPlotlyFigure(payloads: PlotResponse[]) {
         y: 1,
         xanchor: "left",
         yanchor: "top",
-        bgcolor: "rgba(255,253,248,0.85)",
-        bordercolor: "#dfd6c6",
+        bgcolor: colors.legendBackground,
+        bordercolor: colors.legendBorder,
         borderwidth: 1,
         font: { size: 11 },
       },
