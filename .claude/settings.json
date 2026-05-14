@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 -m unittest*)",
+      "Bash(python3 -m py_compile*)",
+      "Bash(python3 main.py*)",
+      "Bash(git status)",
+      "Bash(git log*)",
+      "Bash(git diff*)",
+      "Bash(git branch*)",
+      "Bash(git add*)",
+      "Bash(git commit*)",
+      "Bash(git checkout*)",
+      "Bash(pip install*)",
+      "Bash(pip list*)"
+    ],
+    "deny": []
+  }
+}

@@ -5,6 +5,7 @@ use approx::assert_relative_eq;
 use rust_xlsxwriter::Workbook;
 use serde::Deserialize;
 use skin_analysis_desktop_lib::analysis::{process_single_file, read_xlsx_single};
+use skin_analysis_desktop_lib::models::AnalysisParams;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -74,13 +75,14 @@ fn xlsx_cases_match_shared_expectations() {
         let values = expand_segments(&case.segments);
         write_case_xlsx(&path, &case.column, &values);
 
+        let params = AnalysisParams::default();
         if case.expected_error.as_deref() == Some("missing_column") {
             assert!(read_xlsx_single(&path).is_none(), "{}", case.name);
-            assert!(process_single_file(&path).is_none(), "{}", case.name);
+            assert!(process_single_file(&path, &params).is_none(), "{}", case.name);
             continue;
         }
 
-        let signal = process_single_file(&path).expect("signal should parse");
+        let signal = process_single_file(&path, &params).expect("signal should parse");
         let expected = case.expected.expect("expected signal");
         assert_relative_eq!(signal.initial_avg, expected.initial_avg, epsilon = 1e-9);
         assert_relative_eq!(signal.drop_time, expected.drop_time, epsilon = 1e-9);

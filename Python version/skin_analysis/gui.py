@@ -79,6 +79,7 @@ class RawDataViewerApp(tk.Tk):
         self.root_path_var = tk.StringVar(value=self.root_path)
 
         self.show_drop_lines_var = tk.BooleanVar(value=True)
+        self.show_grid_var = tk.BooleanVar(value=True)
         self.overlay_mode_var = tk.BooleanVar(value=False)
         self.display_mode_var = tk.StringVar(value="Norm")
         self.group_color_var = tk.BooleanVar(value=True)
@@ -361,6 +362,14 @@ class RawDataViewerApp(tk.Tk):
         self.drop_lines_cb = ttk.Checkbutton(controls_frame, text="Show Drop Lines", variable=self.show_drop_lines_var)
         self.drop_lines_cb.pack(anchor=tk.W)
         self._control_widgets.append(self.drop_lines_cb)
+        self.grid_cb = ttk.Checkbutton(
+            controls_frame,
+            text="Show Grid",
+            variable=self.show_grid_var,
+            command=self._on_grid_visibility_changed,
+        )
+        self.grid_cb.pack(anchor=tk.W)
+        self._control_widgets.append(self.grid_cb)
 
         ttk.Separator(controls_frame, orient="horizontal").pack(fill="x", pady=(10, 10))
         self.plot_btn = ttk.Button(controls_frame, text="LOAD & PLOT", command=self.plot_data)
@@ -909,10 +918,17 @@ class RawDataViewerApp(tk.Tk):
         self.ax.set_title("Ready", fontsize=14)
         self.ax.set_xlabel("Time from Drop (s)")
         self.ax.set_ylabel("Value")
-        self.ax.grid(True, linestyle=":", alpha=0.6)
+        self._apply_grid_preference()
         self.color_cycler = cycle(COLOR_PALETTE)
         self._overlay_legend_entries.clear()
         self.ax.set_prop_cycle(None)
+        self.canvas.draw_idle()
+
+    def _apply_grid_preference(self) -> None:
+        self.ax.grid(self.show_grid_var.get(), linestyle=":", alpha=0.6)
+
+    def _on_grid_visibility_changed(self) -> None:
+        self._apply_grid_preference()
         self.canvas.draw_idle()
 
     def _next_group_color(self, is_overlay: bool):
@@ -1012,6 +1028,7 @@ class RawDataViewerApp(tk.Tk):
         self.ax.set_title(self._current_plot_title(), fontsize=12)
         self.ax.set_xlabel("Time from Drop (s)")
         self.ax.set_ylabel(payload.y_unit)
+        self._apply_grid_preference()
 
         count = 0
         first_line_color = None

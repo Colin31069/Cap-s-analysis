@@ -4,10 +4,24 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
+    "predev": "node scripts/sync-plotly-vendor.mjs",
     "dev": "vite",
+    "deps:prepare": "node scripts/prepare-build-deps.mjs",
+    "deps:vendor": "node scripts/vendor-cargo-deps.mjs",
+    "prebuild": "node scripts/sync-plotly-vendor.mjs",
     "build": "vite build",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "tauri:build": "tauri build",
+    "tauri:build:cached": "tauri build --config \"{\\\"build\\\":{\\\"beforeBuildCommand\\\":null}}\"",
+    "tauri:build:mac": "node scripts/build-macos.mjs",
+    "tauri:build:mac:cached": "node scripts/build-macos.mjs --cached",
+    "tauri:build:mac:universal": "node scripts/build-macos.mjs --universal",
+    "tauri:build:win": "tauri build --bundles nsis",
+    "tauri:build:win:cached": "tauri build --bundles nsis --config \"{\\\"build\\\":{\\\"beforeBuildCommand\\\":null}}\"",
+    "tauri:build:exe": "tauri build --no-bundle",
+    "tauri:build:exe:cached": "tauri build --no-bundle --config \"{\\\"build\\\":{\\\"beforeBuildCommand\\\":null}}\"",
+    "tauri:build:all": "tauri build --bundles msi,nsis"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.0.0",

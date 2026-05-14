@@ -202,6 +202,16 @@ cython_debug/
 .cursorignore
 .cursorindexingignore
 
+# Local agent skill cache
+.claudeskill/
+
+# Tauri generated vendor assets
+!desktop-tauri/src/lib/
+!desktop-tauri/src/lib/plotly.ts
+desktop-tauri/public/vendor/plotly.min.js
+desktop-tauri/src-tauri/vendor/
+desktop-tauri/src-tauri/.cargo/config.toml
+
 # Marimo
 marimo/_static/
 marimo/_lsp/
