@@ -270,3 +270,19 @@ python3 -m py_compile main.py skin_analysis/*.py
 - 詳細處理方式請看 [MACOS_GUI_FIXES.md](./MACOS_GUI_FIXES.md)
 
 Tauri folder layout note: the desktop-tauri edition now matches the Python edition. The selected root path is scanned for direct child experiment folders, and each experiment folder contains its `.xlsx` sample files plus optional `.skin_analysis_metadata.json`.
+## 2026-05-08 note: grid toggle
+
+Both the Python desktop app and the Tauri edition include a `Grid` / `Show Grid` visual option. Turn it on to show plot grid lines, or turn it off for a cleaner plot/export.
+
+## 2026-05-14 note: macOS Tauri packaging
+
+The Tauri edition now has a dedicated macOS packaging command:
+
+```bash
+cd desktop-tauri
+npm run tauri:build:mac
+```
+
+Run it on a macOS host. It creates `.app` and `.dmg` bundles under `desktop-tauri/src-tauri/target/release/bundle/`. For a universal Apple Silicon + Intel build, install both Rust targets and run `npm run tauri:build:mac:universal`.
+
+Windows NSIS packaging is still available as `npm run tauri:build:win`.

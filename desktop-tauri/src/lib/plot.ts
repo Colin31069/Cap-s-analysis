@@ -46,7 +46,7 @@ function plotTheme(theme: AppTheme) {
   return theme === "dark" ? DARK : LIGHT;
 }
 
-export function emptyFigure(theme: AppTheme = "dark") {
+export function emptyFigure(theme: AppTheme = "dark", showGrid = true) {
   const t = plotTheme(theme);
   return {
     data: [],
@@ -57,12 +57,14 @@ export function emptyFigure(theme: AppTheme = "dark") {
       font: { family: "-apple-system, 'Segoe UI', system-ui, sans-serif", color: t.font },
       xaxis: {
         title: "Time relative to drop (s)",
+        showgrid: showGrid,
         gridcolor: t.grid,
         zerolinecolor: t.zero,
         color: t.font,
       },
       yaxis: {
         title: "Value",
+        showgrid: showGrid,
         gridcolor: t.grid,
         zerolinecolor: t.zero,
         color: t.font,
@@ -82,8 +84,8 @@ export function emptyFigure(theme: AppTheme = "dark") {
   };
 }
 
-export function buildPlotlyFigure(payloads: PlotResponse[], theme: AppTheme = "dark") {
-  if (payloads.length === 0) return emptyFigure(theme);
+export function buildPlotlyFigure(payloads: PlotResponse[], theme: AppTheme = "dark", showGrid = true) {
+  if (payloads.length === 0) return emptyFigure(theme, showGrid);
 
   const t = plotTheme(theme);
   const data: Record<string, unknown>[] = [];
@@ -157,6 +159,7 @@ export function buildPlotlyFigure(payloads: PlotResponse[], theme: AppTheme = "d
       font: { family: "-apple-system, 'Segoe UI', system-ui, sans-serif", color: t.font },
       xaxis: {
         title: { text: "Time relative to drop (s)", font: { color: t.font } },
+        showgrid: showGrid,
         gridcolor: t.grid,
         zerolinecolor: t.zero,
         zeroline: true,
@@ -165,6 +168,7 @@ export function buildPlotlyFigure(payloads: PlotResponse[], theme: AppTheme = "d
       },
       yaxis: {
         title: { text: latest.yUnit, font: { color: t.font } },
+        showgrid: showGrid,
         gridcolor: t.grid,
         zerolinecolor: t.zero,
         color: t.font,

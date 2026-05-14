@@ -42,6 +42,7 @@
   let overlay = false;
   let useGroupColor = true;
   let showDropLines = true;
+  let showGrid = true;
   let legendStyle: LegendStyle = "Detailed";
   let showGroup = true;
   let showBase = true;
@@ -155,7 +156,9 @@
   async function renderPlot() {
     if (!plotHost) return;
     if (payloads.length === 0 && !isPlotlyLoaded()) return;
-    const figure = payloads.length > 0 ? buildPlotlyFigure(payloads, activeTheme) : emptyFigure(activeTheme);
+    const figure = payloads.length > 0
+      ? buildPlotlyFigure(payloads, activeTheme, showGrid)
+      : emptyFigure(activeTheme, showGrid);
     const plotly = await loadPlotly();
     await plotly.react(plotHost, figure.data, figure.layout, { responsive: true, displaylogo: false });
   }
@@ -752,6 +755,10 @@
           <label class="copt">
             <input type="checkbox" bind:checked={showDropLines} disabled={busy} />
             <span>Drop Lines</span>
+          </label>
+          <label class="copt">
+            <input type="checkbox" bind:checked={showGrid} on:change={renderPlot} disabled={busy} />
+            <span>Grid</span>
           </label>
         </div>
       </div>

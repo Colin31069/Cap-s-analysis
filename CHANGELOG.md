@@ -2,6 +2,24 @@
 
 Append-only record of AI agent changes for this workspace.
 
+## 2026-05-14 17:59 +08:00
+
+- Summary: Added macOS Tauri packaging support with `.app`/`.dmg` build scripts, host-native bundle defaults, macOS icon assets, and packaging documentation.
+- Files: `desktop-tauri/package.json`, `desktop-tauri/scripts/build-macos.mjs`, `desktop-tauri/src-tauri/tauri.conf.json`, `desktop-tauri/src-tauri/icons/*`, `desktop-tauri/README.md`, `README.md`, `CHANGELOG.md`
+- Verification: `cd "desktop-tauri" && npm run build` (pass; existing Svelte label accessibility warnings remain); `cd "desktop-tauri/src-tauri" && cargo test` (pass; 23 unit tests + 1 parity integration test); `cd "desktop-tauri" && npm run tauri:build:exe:cached` (pass; Tauri config/icons accepted, release exe built); `cd "desktop-tauri" && node scripts/build-macos.mjs` on Windows returned the expected macOS-host guard. Real `.app`/`.dmg` output still requires running `npm run tauri:build:mac` on macOS.
+
+## 2026-05-12 16:44 +08:00
+
+- Summary: 打包 Tauri edition — 產生 Windows NSIS 安裝程式 `Skin Analysis Desktop_0.1.0_x64-setup.exe`（3.7 MB）。
+- Files: `desktop-tauri/src-tauri/target/release/bundle/nsis/Skin Analysis Desktop_0.1.0_x64-setup.exe`（產物，未納入 git）
+- Verification: `npm run tauri:build` exit 0；Vite build 2.06s；Rust release compile 46.28s；NSIS packager 完成。
+
+## 2026-05-12 +08:00
+
+- Summary: 清理打包臃腫問題——刪除 Codex 產生的 vendor/ 離線快取、還原 Cargo registry 設定、清除 debug 編譯產物，釋出約 8 GB 磁碟空間。
+- Files: `desktop-tauri/.gitignore`, `desktop-tauri/src-tauri/.cargo/config.toml`（刪除）, `desktop-tauri/src-tauri/vendor/`（刪除）, `desktop-tauri/src-tauri/target/debug/`（刪除）
+- Verification: `npm run tauri:build` — release 快取（2.78 GB）保留，下次打包為增量編譯。
+
 ## 2026-05-08 15:34 +08:00
 
 - Summary: Ignored the local `.claudeskill/` folder so it is excluded from Git commits.
@@ -206,3 +224,9 @@ Append-only record of AI agent changes for this workspace.
 - Summary: Added Tauri packaging dependency preparation scripts for local npm/Cargo cache warmup and optional project-local Cargo vendoring, plus faster Windows release build commands.
 - Files: `.gitignore`, `desktop-tauri/package.json`, `desktop-tauri/scripts/prepare-build-deps.mjs`, `desktop-tauri/scripts/vendor-cargo-deps.mjs`, `desktop-tauri/src-tauri/Cargo.toml`, `desktop-tauri/src-tauri/tauri.conf.json`, `desktop-tauri/README.md`, `CHANGELOG.md`
 - Verification: `cd "desktop-tauri" && npm run deps:prepare` (pass; npm packages, Plotly vendor asset, and Cargo crates available locally); `cd "desktop-tauri" && npm run deps:vendor -- --refresh` (pass; generated local `src-tauri/vendor/` mirror); `cd "desktop-tauri/src-tauri" && cargo fetch --locked --offline` (pass); `cd "desktop-tauri" && npm run tauri:build:exe` (pass in 584.51s after release profile/cache change); `cd "desktop-tauri" && npm run tauri:build:exe` second run (pass in 122.97s); `cd "desktop-tauri" && npm run tauri:build:exe:cached` (pass in 64.74s).
+
+## 2026-05-08 17:28 +08:00
+
+- Summary: Added plot grid visibility toggles to both the Python Tkinter app and the Tauri Plotly edition.
+- Files: `Python version/skin_analysis/gui.py`, `desktop-tauri/src/App.svelte`, `desktop-tauri/src/lib/plot.ts`, `README.md`, `CHANGELOG.md`
+- Verification: `cd "Python version" && python -m unittest discover` (pass); `cd "Python version" && python -m py_compile main.py skin_analysis/*.py` (initial PowerShell wildcard form failed with invalid argument); `cd "Python version" && python -m py_compile main.py skin_analysis/*.py` equivalent using PowerShell-expanded file list (pass); `cd "desktop-tauri" && npm run build` (pass; existing Svelte accessibility warnings remain); `git diff --check` (pass; line-ending warnings only).
