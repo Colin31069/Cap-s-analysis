@@ -1,0 +1,17 @@
+{
+  "python.defaultInterpreterPath": "${workspaceFolder}/Python version/.venv-gui/bin/python",
+  "python.envFile": "${workspaceFolder}/.env",
+  "python.testing.pytestEnabled": true,
+  "python.testing.pytestArgs": [
+    "Python version/tests"
+  ],
+  "python.analysis.extraPaths": [
+    "${workspaceFolder}/Python version"
+  ],
+  "terminal.integrated.cwd": "${workspaceFolder}",
+  "terminal.integrated.env.osx": {
+    "PYTHONPATH": "${workspaceFolder}/Python version",
+    "MPLCONFIGDIR": "${workspaceFolder}/.cache/matplotlib",
+    "PYTHONUNBUFFERED": "1"
+  }
+}

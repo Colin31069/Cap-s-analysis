@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 import numpy as np
 
-from skin_analysis.models import ExcludedSample, ExperimentMetadata, MedicineEntry, PlotSettings, ProcessedSignal
+from skin_analysis.models import CurveSplit, DropTimeOverride, ExcludedSample, ExperimentMetadata, MedicineEntry, PlotSettings, ProcessedSignal
 from skin_analysis.plotting import (
     NO_LEGEND_LABEL,
     build_legend_label,
@@ -110,15 +110,15 @@ class PlottingTests(unittest.TestCase):
         label = build_legend_label("3", settings, 10.0, "Δ:2.50pF", "ok")
         self.assertEqual(label, NO_LEGEND_LABEL)
 
-    def test_legend_suffix_marks_warning_files(self) -> None:
+    def test_simple_legend_omits_warning_suffix(self) -> None:
         settings = make_settings(leg_style="Simple")
         label = build_legend_label("3", settings, 10.0, "Δ:2.50pF", "warning")
-        self.assertEqual(label, "N 3 [注意]")
+        self.assertEqual(label, "N 3")
 
     def test_legend_suffix_marks_inaccurate_files(self) -> None:
         settings = make_settings(show_delta=True)
         label = build_legend_label("3", settings, 10.0, "Δ:2.50pF", "inaccurate")
-        self.assertEqual(label, "N 3 [不準確] (Base:10.00 pF, Δ:2.50pF)")
+        self.assertEqual(label, "N 3 [inaccurate] (Base:10.00 pF, Δ:2.50pF)")
 
     def test_build_plot_title_includes_medicine_metadata(self) -> None:
         title = build_plot_title("TrialA", make_settings().metadata)
@@ -169,6 +169,16 @@ class PlottingTests(unittest.TestCase):
         np.testing.assert_allclose(y_plot, np.array([10.0, 12.0, 14.0, 16.0]))
         self.assertEqual(delta_str, "Δ:2.50pF")
 
+    def test_transform_signal_uses_manual_display_drop_time_without_changing_signal(self) -> None:
+        signal = make_signal(drop_time=0.2)
+        x_plot, _y_plot, _delta_str = transform_signal_for_display(
+            signal,
+            "Raw",
+            display_drop_time_sec=0.1,
+        )
+        np.testing.assert_allclose(x_plot, np.array([-0.1, 0.0, 0.1, 0.2]))
+        self.assertAlmostEqual(signal.drop_time, 0.2)
+
     def test_transform_signal_for_baseline_mode(self) -> None:
         x_plot, y_plot, delta_str = transform_signal_for_display(
             make_signal(effective_baseline_points=2, effective_baseline_duration_sec=0.2),
@@ -179,8 +189,11 @@ class PlottingTests(unittest.TestCase):
         self.assertEqual(delta_str, "Δ:2.50pF")
 
     def test_build_plot_item_places_drop_marker_at_zero(self) -> None:
-        item = build_plot_item(make_signal(), "3", make_settings(display_mode="Raw"), "-", None)
+        item = build_plot_item(make_signal(), "3.xlsx", "3", make_settings(display_mode="Raw"), "-", None)
         self.assertAlmostEqual(item.drop_time, 0.0)
+        self.assertEqual(item.file_name, "3.xlsx")
+        self.assertAlmostEqual(item.display_drop_time_sec, 0.2)
+        self.assertFalse(item.manual_drop_time)
         self.assertEqual(item.baseline_warning_details, ())
         self.assertEqual(item.timing_warning_details, ())
         self.assertEqual(item.drop_detection_source, "window")
@@ -196,7 +209,7 @@ class PlottingTests(unittest.TestCase):
             baseline_tail_warning_hit=True,
             baseline_rise_warning_hit=True,
         )
-        item = build_plot_item(signal, "3", make_settings(display_mode="Raw"), "-", None)
+        item = build_plot_item(signal, "3.xlsx", "3", make_settings(display_mode="Raw"), "-", None)
         self.assertEqual(item.baseline_warning_status, "inaccurate")
         self.assertEqual(
             item.baseline_warning_details,
@@ -222,6 +235,68 @@ class PlottingTests(unittest.TestCase):
 
         self.assertEqual([item.sample_name for item in payload.plot_items], ["1", "3", "4", "5"])
         self.assertFalse(any("2.xlsx" in call_args.args[0] for call_args in mocked_process.call_args_list))
+
+    def test_build_plot_payload_passes_curve_split_and_segment_to_processing(self) -> None:
+        metadata = ExperimentMetadata(
+            medicine_count=1,
+            medicines=[MedicineEntry(name="lanolin", dose="1%")],
+            curve_splits=[CurveSplit(file_name="1.xlsx", split_index=4100, split_time_sec=410.0)],
+        )
+        settings = make_settings(metadata=metadata, analysis_segment="pbs")
+
+        with patch("skin_analysis.plotting.process_single_file", return_value=make_signal()) as mocked_process:
+            build_plot_payload(settings, group_color=None)
+
+        self.assertEqual(mocked_process.call_args.kwargs["curve_split"], metadata.curve_splits[0])
+        self.assertEqual(mocked_process.call_args.kwargs["segment"], "pbs")
+
+    def test_build_plot_payload_applies_drop_override_only_for_matching_segment(self) -> None:
+        metadata = ExperimentMetadata(
+            medicine_count=1,
+            medicines=[MedicineEntry(name="", dose="")],
+            drop_time_overrides=[DropTimeOverride(file_name="1.xlsx", segment="pbs", drop_time_sec=0.1)],
+        )
+
+        with patch("skin_analysis.plotting.process_single_file", return_value=make_signal(drop_time=0.2)):
+            pbs_payload = build_plot_payload(make_settings(metadata=metadata, analysis_segment="pbs"), group_color=None)
+            lanolin_payload = build_plot_payload(make_settings(metadata=metadata, analysis_segment="lanolin"), group_color=None)
+
+        self.assertTrue(pbs_payload.plot_items[0].manual_drop_time)
+        self.assertAlmostEqual(pbs_payload.plot_items[0].display_drop_time_sec, 0.1)
+        np.testing.assert_allclose(pbs_payload.plot_items[0].x_plot, np.array([-0.1, 0.0, 0.1, 0.2]))
+        self.assertFalse(lanolin_payload.plot_items[0].manual_drop_time)
+        self.assertAlmostEqual(lanolin_payload.plot_items[0].display_drop_time_sec, 0.2)
+        np.testing.assert_allclose(lanolin_payload.plot_items[0].x_plot, np.array([-0.2, -0.1, 0.0, 0.1]))
+
+    def test_simple_legend_omits_manual_drop_suffix(self) -> None:
+        metadata = ExperimentMetadata(
+            medicine_count=1,
+            medicines=[MedicineEntry(name="", dose="")],
+            drop_time_overrides=[DropTimeOverride(file_name="1.xlsx", segment="pbs", drop_time_sec=0.1)],
+        )
+
+        with patch("skin_analysis.plotting.process_single_file", return_value=make_signal()):
+            payload = build_plot_payload(
+                make_settings(metadata=metadata, analysis_segment="pbs", leg_style="Simple"),
+                group_color=None,
+            )
+
+        self.assertEqual(payload.plot_items[0].label_txt, "N 1")
+
+    def test_detailed_legend_includes_manual_drop_suffix(self) -> None:
+        metadata = ExperimentMetadata(
+            medicine_count=1,
+            medicines=[MedicineEntry(name="", dose="")],
+            drop_time_overrides=[DropTimeOverride(file_name="1.xlsx", segment="pbs", drop_time_sec=0.1)],
+        )
+
+        with patch("skin_analysis.plotting.process_single_file", return_value=make_signal()):
+            payload = build_plot_payload(
+                make_settings(metadata=metadata, analysis_segment="pbs", leg_style="Detailed"),
+                group_color=None,
+            )
+
+        self.assertEqual(payload.plot_items[0].label_txt, "N 1 (Base:10.00 pF) [manual drop]")
 
     def test_display_mode_to_y_unit(self) -> None:
         self.assertEqual(display_mode_to_y_unit("Norm"), "Normalized (%)")

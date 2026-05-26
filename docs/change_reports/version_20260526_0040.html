@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Skin Analysis 變更報告 - 2026-05-26 00:40</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #1f2933;
+      --muted: #607080;
+      --line: #d7dee6;
+      --panel: #f7f9fb;
+      --accent: #0f766e;
+      --accent-soft: #d9f2ee;
+      --warn: #9a3412;
+      --warn-soft: #ffedd5;
+    }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--ink);
+      background: #ffffff;
+      line-height: 1.55;
+    }
+    main {
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 32px 20px 48px;
+    }
+    header {
+      border-bottom: 1px solid var(--line);
+      margin-bottom: 24px;
+      padding-bottom: 18px;
+    }
+    h1 {
+      font-size: 30px;
+      margin: 0 0 8px;
+      letter-spacing: 0;
+    }
+    h2 {
+      font-size: 20px;
+      margin: 28px 0 12px;
+    }
+    p {
+      margin: 8px 0;
+    }
+    .meta {
+      color: var(--muted);
+      font-size: 14px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 12px;
+      margin: 18px 0;
+    }
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      padding: 14px 16px;
+    }
+    .tag {
+      display: inline-block;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-size: 13px;
+      font-weight: 700;
+      padding: 2px 10px;
+      margin-bottom: 8px;
+    }
+    .warning {
+      background: var(--warn-soft);
+      border-color: #fdba74;
+    }
+    .warning .tag {
+      background: #fed7aa;
+      color: var(--warn);
+    }
+    ul {
+      padding-left: 22px;
+      margin: 8px 0;
+    }
+    code {
+      background: #edf2f7;
+      border-radius: 4px;
+      padding: 1px 5px;
+      font-family: "SFMono-Regular", Consolas, monospace;
+      font-size: 0.92em;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 10px 0;
+      font-size: 14px;
+    }
+    th,
+    td {
+      border: 1px solid var(--line);
+      padding: 8px 10px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th {
+      background: #eef3f7;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>反應曲線切分與 HTML 報告</h1>
+      <p class="meta">產生時間：2026-05-26 00:40 +08:00 Asia/Taipei</p>
+      <p>本版新增 lanolin/PBS 曲線切分，避免 lanolin 前段反應混入 PBS 分析；同時建立 HTML 變更報告流程。</p>
+    </header>
+
+    <section class="grid" aria-label="核心變更">
+      <article class="card">
+        <span class="tag">切分</span>
+        <p>在 sample 清單選擇電極檔後，可開啟原始時間軸預覽並點選分界點。</p>
+      </article>
+      <article class="card">
+        <span class="tag">PBS</span>
+        <p>有切點的檔案在 PBS 模式只分析右段，且右段時間從 0 秒重新開始。</p>
+      </article>
+      <article class="card">
+        <span class="tag">Lanolin</span>
+        <p>Lanolin 模式只顯示已切分檔案的左段，用於檢查同濃度約 3 片電極反應曲線。</p>
+      </article>
+    </section>
+
+    <h2>輸入與保存</h2>
+    <ul>
+      <li>原始 Excel 檔不修改。</li>
+      <li>切點保存於每個 experiment folder 的 <code>.skin_analysis_metadata.json</code>。</li>
+      <li>新增欄位為 <code>curve_splits</code>，包含檔名、<code>split_index</code>、<code>split_time_sec</code>、左段標籤與右段標籤。</li>
+      <li>舊 metadata 沒有 <code>curve_splits</code> 時仍可正常讀取，預設為空清單。</li>
+    </ul>
+
+    <h2>分析流程影響</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>模式</th>
+          <th>資料來源</th>
+          <th>時間軸規則</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>PBS Segment</td>
+          <td>有切點時使用右段；無切點時維持完整曲線</td>
+          <td>右段重新從 0 秒開始，再依既有 drop 偵測對齊繪圖</td>
+        </tr>
+        <tr>
+          <td>Lanolin Segment</td>
+          <td>只使用已切分檔案左段</td>
+          <td>維持原始起點 0 秒，不重算成 PBS 起點</td>
+        </tr>
+        <tr>
+          <td>Full Curve</td>
+          <td>完整原始曲線</td>
+          <td>沿用既有 drop 對齊顯示，主要作為檢查視圖</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>測試結果</h2>
+    <ul>
+      <li><code>PYTHONPYCACHEPREFIX=/private/tmp/codex_pycache ./.venv-gui/bin/python -m unittest tests.test_metadata tests.test_analysis tests.test_plotting tests.test_statistics</code>：通過，63 tests。</li>
+      <li><code>PYTHONPYCACHEPREFIX=/private/tmp/codex_pycache ./.venv-gui/bin/python -m py_compile main.py skin_analysis/*.py</code>：通過。</li>
+    </ul>
+
+    <section class="card warning">
+      <span class="tag">注意</span>
+      <p>目前只實作 Python Tkinter 版本。Tauri 版本尚未同步這個曲線切分功能。</p>
+      <p>未切分但其實含有 lanolin 前段的檔案，工具無法自動判斷；需要先手動設定切點，PBS 統計才會排除左段。</p>
+    </section>
+  </main>
+</body>
+</html>

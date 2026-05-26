@@ -78,6 +78,8 @@ ROOT/
 - 每種藥品都有兩個自由輸入欄位：`Name` 與 `Dose`
 - `Medicine Metadata` 預設收合，需要時再展開編輯
 - 藥品標記與手動 sample 排除清單會自動保存到該實驗資料夾內的 `.skin_analysis_metadata.json`
+- 曲線切點也會自動保存到同一個 metadata 檔；原始 `.xlsx` 不會被修改
+- 手動 drop 對齊也會保存到 metadata；它只影響圖表顯示與匯出，不改統計分析
 - 如果 JSON 不存在，程式會自動建立預設內容
 - 如果 JSON 損壞或格式不正確，程式會回到預設 1 列空白欄位並提示使用者
 
@@ -93,6 +95,18 @@ ROOT/
   "excluded_samples": [
     {"file_name": "3.xlsx", "reason": "baseline drift"},
     {"file_name": "4.xlsx", "reason": "Dixon Q10 alpha=0.05", "method": "dixon_q"}
+  ],
+  "curve_splits": [
+    {
+      "file_name": "1.xlsx",
+      "split_index": 4100,
+      "split_time_sec": 410.0,
+      "left_label": "lanolin_reaction_curve",
+      "right_label": "pbs_response_curve"
+    }
+  ],
+  "drop_time_overrides": [
+    {"file_name": "2.xlsx", "segment": "pbs", "drop_time_sec": 412.5}
   ]
 }
 ```
@@ -104,14 +118,19 @@ ROOT/
 3. 從清單選擇目標 `Experiment Folder`。
 4. 視需要展開 `Medicine Metadata`，設定藥品數量並填入每種藥品的名稱與劑量。
 5. 視需要在 `Sample Exclusion` 選擇要踢除的 `.xlsx` sample，按 `Exclude Selected` 並輸入可選原因；按 `Restore Selected` 可恢復納入分析。
-6. 視需求選擇顯示模式：
+6. 如果某個檔案前半段是 lanolin 反應曲線、後半段才是 PBS 反應曲線，先在 `Sample Exclusion` 選取該檔案，按 `Pick Split Point`，在原始時間軸預覽圖上點選分界點。左段會標記為 `lanolin_reaction_curve`，右段會標記為 `pbs_response_curve`；按 `Clear Selected Split` 可移除該檔案切點。
+7. 在 `Curve Split` 的 `Plot/analysis segment` 選擇本次要畫的資料段：
+   - `PBS Segment`：預設模式。若檔案已有切點，PBS 分析會從切點左側最多補 200 點作為 baseline pre-roll，讓 lanolin 左段與 PBS baseline 可以有一小段重疊；沒有切點的檔案仍使用完整曲線。
+   - `Lanolin Segment`：只顯示已切分檔案的左側 lanolin 段；沒有切點的檔案會略過。
+   - `Full Curve`：顯示完整原始曲線，用於檢查連續曲線，不作為預設 PBS 比較。
+8. 視需求選擇顯示模式：
    - `Normalized (%)`：以每個檔案各自 baseline 視窗平均值為 100% 顯示相對變化，時間軸會以偵測到的 drop 作為 `0`
    - `Raw Data (pF)`：顯示原始電容值，時間軸會以偵測到的 drop 作為 `0`
    - `Baseline Only (Raw Baseline Window)`：只顯示本次設定的 baseline 區段，但仍使用相同的相對 drop 時間軸
-7. 視需求調整 timing、圖例與視覺選項：
+9. 視需求調整 timing、圖例與視覺選項：
    - `Plot Title (optional)`：可自訂本次繪圖標題；留空時維持預設標題，也就是實驗資料夾名稱與藥品標記資訊。已繪出的圖會在編輯時立即更新，匯出圖片也會使用目前畫面上的標題
    - `Sample Exclusion`：手動排除明確有問題的 sample，不會刪除原始 `.xlsx`。規則是 `n < 5` 禁止排除；`n >= 5` 最多可排除 `floor(n / 5)` 筆，例如 `n=5-9` 最多 1 筆、`n=10-14` 最多 2 筆
-   - `Baseline Duration (s)`：設定前面多少秒拿來做 baseline 平均；只保留在本次程式執行期間，不會寫入 metadata
+   - `Baseline Duration (s)`：設定前面多少秒拿來做 baseline 平均；只保留在本次程式執行期間，不會寫入 metadata。有切點的 PBS Segment 會固定使用 200 點，也就是 20 秒，作為 PBS baseline pre-roll 目標
    - `Drug Apply Time (s)`：設定大約在幾秒附近施加藥品
    - `Apply Window +/- (s)`：設定施藥時間上下各容許多少秒做 drop 搜尋
    - `Baseline Accuracy Threshold (%)`：設定 baseline 品質警示門檻；只用來提示，不會改變 `Normalized (%)` 的 100% 定義，也不會自動排除資料
@@ -119,11 +138,18 @@ ROOT/
    - `Experiment Color`：同一次載入的實驗使用同色，靠線型區分不同 sample
    - `Show Drop Lines`：顯示 `0` 秒位置的垂直輔助線，也就是各條曲線對齊後的 drop 參考點
    - `Legend Customization`：控制圖例是否顯示 baseline、delta；疊圖且開啟 `Experiment Color` 時，圖例只會以放大的色塊列出每個藥品/濃度組別，沒有填 metadata 時會改用實驗資料夾名稱；baseline 品質可疑時仍會跳出警示視窗
-8. 點選 `LOAD & PLOT` 載入並繪圖。
-9. 如果 baseline 視窗和施藥搜尋區間重疊，程式會自動縮短 baseline 視窗；如果在指定的施藥時間區間內沒有找到明顯反應點，程式會警告後退回自動搜尋。
-10. 如果某些檔案的 baseline 視窗尾端偏移過大，或在 baseline 期間就出現連續上升，程式會跳出警示視窗列出受影響的 sample，供使用者自行判斷是否接受這筆實驗資料。
-11. 圖表標題會使用 `Plot Title (optional)` 的內容；若留空，會顯示實驗資料夾名稱與藥品標記資訊。
-12. 需要輸出圖片時，點選 `Export Plot` 儲存成 `.png`。
+10. 點選 `LOAD & PLOT` 載入並繪圖。
+11. 如果 baseline 視窗和施藥搜尋區間重疊，程式會自動縮短 baseline 視窗；如果在指定的施藥時間區間內沒有找到明顯反應點，程式會警告後退回自動搜尋。
+12. 如果某些檔案的 baseline 視窗尾端偏移過大，或在 baseline 期間就出現連續上升，程式會跳出警示視窗列出受影響的 sample，供使用者自行判斷是否接受這筆實驗資料。
+13. 圖表標題會使用 `Plot Title (optional)` 的內容；若留空，會顯示實驗資料夾名稱、藥品標記資訊與目前資料段。
+14. 若某條曲線的自動 drop 對齊明顯偏移，先在 `Sample Exclusion` 清單選取該 sample，按 `Adjust Drop`，把圖上的 highlighted drop handle 拖到該 sample 真正的 drop/上升起點。放開後工具會保存該 segment 的手動 drop 對齊並重畫圖；`Clear Drop Adjustment` 可清除目前 sample 與目前 segment 的手動對齊。
+15. 需要輸出圖片時，點選 `Export Plot` 儲存成 `.png`。
+
+## 手動 drop 對齊
+
+`Adjust Drop` 是 plot-only 修正，用來處理單一 sample 的自動 drop 偵測偏早或偏晚，導致曲線在圖上沒有和其他 sample 對齊的情況。它會改變該 sample 的繪圖時間軸，讓使用者指定的 drop 點對齊 `x = 0`；不會改變 raw data、baseline、Delta %、Dixon Q、ANOVA 或 statistics CSV 的原始分析結果。
+
+手動 drop 對齊以 `file_name + segment` 保存，例如 PBS Segment 的 `2.xlsx` 修正不會影響 Lanolin Segment 或 Full Curve。sample 清單會標示 `[manual drop]`。Legend 選 `Simple` 時只顯示 `N 1`、`N 2`、`N 3`；選 `Detailed` 時才會顯示 `[manual drop]`、baseline、delta 或 warning/inaccurate 狀態。
 
 ## 手動踢除 sample
 
@@ -165,6 +191,12 @@ Delta % = raw delta pF / 該電極片自己的 baseline pF * 100
 - 每片電極片的 Delta % 明細與資料品質警示
 
 結果可以從統計視窗匯出為 `.csv`。如果某組樣本數太少，例如 `n < 2` 或 `n < 3`，視窗會列出警示並略過不適合的推論檢定。這版只包含 one-way ANOVA，不包含兩兩比較或事後比較。
+
+如果 `.skin_analysis_metadata.json` 內有 `curve_splits`，統計分析與 Dixon Q 會使用切點附近的 PBS Segment 計算 `Delta %`。PBS Segment 會從切點左側最多補 200 點作為 baseline pre-roll；如果切點左側不足 200 點，該 sample 仍會納入統計，但 per-sample warning 會標示實際點數，例如 `PBS baseline pre-roll 120/200 points before split.`。未設定切點的檔案仍依照完整曲線分析。
+
+## HTML 變更報告
+
+AI agent 修改軟體後，除了保留 Markdown 文件與 `CHANGELOG.md`，也會在 `docs/change_reports/` 產生 HTML 變更報告。HTML 報告用來給使用者快速閱讀本次版本差異、分析流程影響、測試結果與注意事項；給 agent 的規格與操作指引仍維持 Markdown。
 
 ---
 
