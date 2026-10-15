@@ -4,7 +4,7 @@ import json
 import os
 
 from .config import DEFAULT_MEDICINE_COUNT, MAX_MEDICINES, METADATA_FILENAME
-from .models import ExcludedSample, ExperimentMetadata, MedicineEntry
+from .models import CurveSegment, CurveSplit, DropTimeOverride, ExcludedSample, ExperimentMetadata, MedicineEntry
 
 
 def metadata_file_path(folder_path: str) -> str:
@@ -16,7 +16,35 @@ def default_experiment_metadata() -> ExperimentMetadata:
         medicine_count=DEFAULT_MEDICINE_COUNT,
         medicines=[MedicineEntry(name="", dose="") for _ in range(DEFAULT_MEDICINE_COUNT)],
         excluded_samples=[],
+        curve_splits=[],
+        drop_time_overrides=[],
     )
+
+
+def curve_split_for_file(metadata: ExperimentMetadata, file_name: str) -> CurveSplit | None:
+    normalized_name = os.path.basename(file_name.strip()).casefold()
+    if not normalized_name:
+        return None
+
+    for entry in metadata.curve_splits:
+        if os.path.basename(entry.file_name.strip()).casefold() == normalized_name:
+            return entry
+    return None
+
+
+def drop_time_override_for_file(
+    metadata: ExperimentMetadata,
+    file_name: str,
+    segment: CurveSegment,
+) -> DropTimeOverride | None:
+    normalized_name = os.path.basename(file_name.strip()).casefold()
+    if not normalized_name:
+        return None
+
+    for entry in metadata.drop_time_overrides:
+        if entry.segment == segment and os.path.basename(entry.file_name.strip()).casefold() == normalized_name:
+            return entry
+    return None
 
 
 def _normalize_metadata(raw_data: object) -> ExperimentMetadata:
@@ -26,6 +54,8 @@ def _normalize_metadata(raw_data: object) -> ExperimentMetadata:
     medicine_count = raw_data.get("medicine_count", DEFAULT_MEDICINE_COUNT)
     medicines = raw_data.get("medicines", [])
     excluded_samples = raw_data.get("excluded_samples", [])
+    curve_splits = raw_data.get("curve_splits", [])
+    drop_time_overrides = raw_data.get("drop_time_overrides", [])
 
     if not isinstance(medicine_count, int):
         raise ValueError("medicine_count must be an integer.")
@@ -33,6 +63,10 @@ def _normalize_metadata(raw_data: object) -> ExperimentMetadata:
         raise ValueError("medicines must be a list.")
     if not isinstance(excluded_samples, list):
         raise ValueError("excluded_samples must be a list.")
+    if not isinstance(curve_splits, list):
+        raise ValueError("curve_splits must be a list.")
+    if not isinstance(drop_time_overrides, list):
+        raise ValueError("drop_time_overrides must be a list.")
 
     medicine_count = max(0, min(MAX_MEDICINES, medicine_count))
 
@@ -86,10 +120,83 @@ def _normalize_metadata(raw_data: object) -> ExperimentMetadata:
         excluded_keys[key] = len(excluded_entries)
         excluded_entries.append(entry)
 
+    split_entries: list[CurveSplit] = []
+    split_keys: set[str] = set()
+    for item in curve_splits:
+        if not isinstance(item, dict):
+            raise ValueError("Each curve split entry must be an object.")
+
+        file_name = item.get("file_name", "")
+        split_index = item.get("split_index", 0)
+        split_time_sec = item.get("split_time_sec", 0.0)
+        left_label = item.get("left_label", "lanolin_reaction_curve")
+        right_label = item.get("right_label", "pbs_response_curve")
+        if not isinstance(file_name, str):
+            raise ValueError("Curve split file_name must be a string.")
+        if not isinstance(split_index, int):
+            raise ValueError("Curve split split_index must be an integer.")
+        if not isinstance(split_time_sec, (int, float)):
+            raise ValueError("Curve split split_time_sec must be a number.")
+        if not isinstance(left_label, str) or not isinstance(right_label, str):
+            raise ValueError("Curve split labels must be strings.")
+
+        normalized_file_name = os.path.basename(file_name.strip())
+        if not normalized_file_name or split_index <= 0 or float(split_time_sec) < 0:
+            continue
+
+        key = normalized_file_name.casefold()
+        if key in split_keys:
+            continue
+        split_keys.add(key)
+        split_entries.append(
+            CurveSplit(
+                file_name=normalized_file_name,
+                split_index=split_index,
+                split_time_sec=float(split_time_sec),
+                left_label=left_label.strip() or "lanolin_reaction_curve",
+                right_label=right_label.strip() or "pbs_response_curve",
+            )
+        )
+
+    valid_segments: set[CurveSegment] = {"pbs", "lanolin", "full"}
+    drop_override_entries: list[DropTimeOverride] = []
+    drop_override_keys: set[tuple[str, CurveSegment]] = set()
+    for item in drop_time_overrides:
+        if not isinstance(item, dict):
+            raise ValueError("Each drop time override entry must be an object.")
+
+        file_name = item.get("file_name", "")
+        segment = item.get("segment", "")
+        drop_time_sec = item.get("drop_time_sec", 0.0)
+        if not isinstance(file_name, str):
+            raise ValueError("Drop time override file_name must be a string.")
+        if segment not in valid_segments:
+            raise ValueError("Drop time override segment must be pbs, lanolin, or full.")
+        if not isinstance(drop_time_sec, (int, float)):
+            raise ValueError("Drop time override drop_time_sec must be a number.")
+
+        normalized_file_name = os.path.basename(file_name.strip())
+        if not normalized_file_name or float(drop_time_sec) < 0:
+            continue
+
+        key = (normalized_file_name.casefold(), segment)
+        if key in drop_override_keys:
+            continue
+        drop_override_keys.add(key)
+        drop_override_entries.append(
+            DropTimeOverride(
+                file_name=normalized_file_name,
+                segment=segment,
+                drop_time_sec=float(drop_time_sec),
+            )
+        )
+
     return ExperimentMetadata(
         medicine_count=medicine_count,
         medicines=entries,
         excluded_samples=excluded_entries,
+        curve_splits=split_entries,
+        drop_time_overrides=drop_override_entries,
     )
 
 
@@ -124,6 +231,26 @@ def save_experiment_metadata(folder_path: str, metadata: ExperimentMetadata) -> 
             }
             for entry in metadata.excluded_samples
             if os.path.basename(entry.file_name.strip())
+        ],
+        "curve_splits": [
+            {
+                "file_name": os.path.basename(entry.file_name.strip()),
+                "split_index": int(entry.split_index),
+                "split_time_sec": float(entry.split_time_sec),
+                "left_label": entry.left_label.strip() or "lanolin_reaction_curve",
+                "right_label": entry.right_label.strip() or "pbs_response_curve",
+            }
+            for entry in metadata.curve_splits
+            if os.path.basename(entry.file_name.strip()) and int(entry.split_index) > 0
+        ],
+        "drop_time_overrides": [
+            {
+                "file_name": os.path.basename(entry.file_name.strip()),
+                "segment": entry.segment,
+                "drop_time_sec": float(entry.drop_time_sec),
+            }
+            for entry in metadata.drop_time_overrides
+            if os.path.basename(entry.file_name.strip()) and float(entry.drop_time_sec) >= 0
         ],
     }
 

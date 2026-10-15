@@ -23,6 +23,7 @@ from .filesystem import get_subfolders, list_xlsx_files
 from .metadata import load_experiment_metadata
 from .models import (
     AnovaResult,
+    CurveSplit,
     DixonQRecommendation,
     ExcludedSample,
     GroupStatistics,
@@ -80,6 +81,14 @@ def _samples_for_group(samples: Sequence[StatisticalSample], group_name: str) ->
 
 def sample_file_name(sample: StatisticalSample) -> str:
     return sample.file_name or f"{sample.sample_name}.xlsx"
+
+
+def _curve_split_for_file(curve_splits: Sequence[CurveSplit], file_name: str) -> CurveSplit | None:
+    normalized_name = os.path.basename(file_name.strip()).casefold()
+    for curve_split in curve_splits:
+        if os.path.basename(curve_split.file_name.strip()).casefold() == normalized_name:
+            return curve_split
+    return None
 
 
 def _valid_groups(samples: Sequence[StatisticalSample]) -> list[str]:
@@ -547,6 +556,7 @@ def collect_delta_percent_samples_for_group(
     baseline_duration_sec: float = DEFAULT_BASELINE_DURATION_SEC,
     drug_apply_time_sec: float = DEFAULT_DRUG_APPLY_TIME_SEC,
     drug_apply_tolerance_sec: float = DEFAULT_DRUG_APPLY_TOLERANCE_SEC,
+    curve_splits: Sequence[CurveSplit] = (),
 ) -> tuple[list[StatisticalSample], tuple[str, ...]]:
     samples: list[StatisticalSample] = []
     warnings: list[str] = []
@@ -561,6 +571,8 @@ def collect_delta_percent_samples_for_group(
             baseline_duration_sec=baseline_duration_sec,
             drug_apply_time_sec=drug_apply_time_sec,
             drug_apply_tolerance_sec=drug_apply_tolerance_sec,
+            curve_split=_curve_split_for_file(curve_splits, file_name),
+            segment="pbs",
         )
         sample_name = os.path.splitext(file_name)[0]
         if signal is None:
@@ -603,6 +615,7 @@ def build_dixon_q_review_for_group(
     baseline_duration_sec: float = DEFAULT_BASELINE_DURATION_SEC,
     drug_apply_time_sec: float = DEFAULT_DRUG_APPLY_TIME_SEC,
     drug_apply_tolerance_sec: float = DEFAULT_DRUG_APPLY_TOLERANCE_SEC,
+    curve_splits: Sequence[CurveSplit] = (),
 ) -> tuple[list[StatisticalSample], list[DixonQRecommendation], tuple[str, ...]]:
     files = list_xlsx_files(group_dir)
     current_exclusions = current_excluded_samples(excluded_samples, files)
@@ -612,6 +625,7 @@ def build_dixon_q_review_for_group(
         group_dir,
         files,
         excluded_file_names,
+        curve_splits=curve_splits,
         baseline_warning_threshold_pct=baseline_warning_threshold_pct,
         baseline_duration_sec=baseline_duration_sec,
         drug_apply_time_sec=drug_apply_time_sec,
@@ -660,6 +674,7 @@ def collect_delta_percent_samples(
             group_dir,
             files,
             excluded_file_names,
+            curve_splits=metadata.curve_splits,
             baseline_warning_threshold_pct=baseline_warning_threshold_pct,
             baseline_duration_sec=baseline_duration_sec,
             drug_apply_time_sec=drug_apply_time_sec,

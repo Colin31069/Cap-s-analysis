@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 import numpy as np
 import pandas as pd
 
@@ -15,8 +17,9 @@ from .config import (
     DROP_SIGMA_THRESHOLD,
     DT_SEC,
     LEGACY_DROP_SEARCH_POINTS,
+    PBS_BASELINE_PRE_ROLL_POINTS,
 )
-from .models import BaselineWarningStatus, DropDetectionSource, ProcessedSignal
+from .models import BaselineWarningStatus, CurveSegment, CurveSplit, DropDetectionSource, ProcessedSignal
 
 
 def read_xlsx_single(path: str) -> pd.DataFrame | None:
@@ -148,6 +151,103 @@ def _fallback_drop_index(samples: np.ndarray, threshold: float, baseline_end_idx
     return crossing_idx
 
 
+def split_index_from_time_sec(split_time_sec: float, sample_count: int) -> int:
+    if sample_count < 2:
+        return 0
+    requested_index = int(round(max(0.0, float(split_time_sec)) / DT_SEC))
+    return max(1, min(sample_count - 1, requested_index))
+
+
+def _split_index_for_data(curve_split: CurveSplit, sample_count: int) -> int:
+    if sample_count < 2:
+        return 0
+    return max(1, min(sample_count - 1, int(curve_split.split_index)))
+
+
+def pbs_pre_roll_window_indices(curve_split: CurveSplit, sample_count: int) -> tuple[int, int, int]:
+    split_index = _split_index_for_data(curve_split, sample_count)
+    if split_index <= 0:
+        return 0, 0, 0
+    start_index = max(0, split_index - PBS_BASELINE_PRE_ROLL_POINTS)
+    return start_index, split_index, split_index - start_index
+
+
+def _pbs_pre_roll_warning(pre_roll_points: int) -> str | None:
+    if pre_roll_points >= PBS_BASELINE_PRE_ROLL_POINTS:
+        return None
+    return f"PBS baseline pre-roll {pre_roll_points}/{PBS_BASELINE_PRE_ROLL_POINTS} points before split."
+
+
+def _build_static_segment_signal(
+    samples: np.ndarray,
+    baseline_warning_threshold_pct: float,
+    baseline_duration_sec: float,
+) -> ProcessedSignal | None:
+    samples = np.asarray(samples, dtype=float)
+    if samples.size == 0:
+        return None
+
+    warning_threshold_pct = max(0.0, float(baseline_warning_threshold_pct))
+    requested_baseline_duration_sec = max(float(baseline_duration_sec), DT_SEC)
+    baseline_len = min(
+        len(samples),
+        _seconds_to_points(requested_baseline_duration_sec, minimum=1),
+    )
+    baseline_segment = samples[:baseline_len]
+    initial_avg = float(np.mean(baseline_segment))
+    effective_baseline_duration_sec = baseline_len * DT_SEC
+
+    tail_len = min(len(baseline_segment), BASELINE_TAIL_POINTS)
+    tail_mean = float(np.mean(baseline_segment[-tail_len:])) if tail_len > 0 else initial_avg
+    tail_offset_pct = _offset_pct(tail_mean, initial_avg)
+    rise_offset_pct = _max_continuous_rise_offset_pct(baseline_segment, initial_avg)
+    tail_warning_hit = abs(tail_offset_pct) >= warning_threshold_pct
+    rise_warning_hit = rise_offset_pct >= warning_threshold_pct
+    warning_status = _baseline_warning_status(tail_warning_hit, rise_warning_hit)
+    final_avg = float(np.nanmean(samples[-100:])) if len(samples) >= 100 else float("nan")
+    delta_raw = final_avg - initial_avg if not np.isnan(final_avg) else float("nan")
+
+    return ProcessedSignal(
+        time_sec=np.arange(len(samples), dtype=float) * DT_SEC,
+        capacitance=samples,
+        drop_time=0.0,
+        delta_capacitance=delta_raw,
+        initial_avg=initial_avg,
+        effective_baseline_points=baseline_len,
+        effective_baseline_duration_sec=effective_baseline_duration_sec,
+        baseline_was_auto_shortened=False,
+        drop_detection_source="window",
+        drop_search_fallback_used=False,
+        timing_warning_details=(),
+        baseline_warning_status=warning_status,
+        baseline_tail_offset_pct=tail_offset_pct,
+        baseline_rise_offset_pct=rise_offset_pct,
+        baseline_tail_warning_hit=tail_warning_hit,
+        baseline_rise_warning_hit=rise_warning_hit,
+    )
+
+
+def _samples_for_segment(
+    samples: np.ndarray,
+    curve_split: CurveSplit | None,
+    segment: CurveSegment,
+) -> tuple[np.ndarray | None, int]:
+    if segment == "full" or curve_split is None:
+        if segment == "lanolin":
+            return None, 0
+        return samples, 0
+
+    split_index = _split_index_for_data(curve_split, len(samples))
+    if split_index <= 0:
+        return None, 0
+    if segment == "lanolin":
+        return samples[:split_index], 0
+    if segment == "pbs":
+        start_index, _split_index, pre_roll_points = pbs_pre_roll_window_indices(curve_split, len(samples))
+        return samples[start_index:], pre_roll_points
+    return samples, 0
+
+
 def analyze_signal(
     data: np.ndarray,
     baseline_warning_threshold_pct: float = DEFAULT_BASELINE_WARNING_THRESHOLD_PCT,
@@ -239,14 +339,40 @@ def process_single_file(
     baseline_duration_sec: float = DEFAULT_BASELINE_DURATION_SEC,
     drug_apply_time_sec: float = DEFAULT_DRUG_APPLY_TIME_SEC,
     drug_apply_tolerance_sec: float = DEFAULT_DRUG_APPLY_TOLERANCE_SEC,
+    curve_split: CurveSplit | None = None,
+    segment: CurveSegment = "pbs",
 ) -> ProcessedSignal | None:
     df = read_xlsx_single(file_path)
     if df is None or df.empty:
         return None
-    return analyze_signal(
-        df[DATA_COL].to_numpy(),
+    samples = df[DATA_COL].to_numpy()
+    segment_samples, pre_roll_points = _samples_for_segment(samples, curve_split, segment)
+    if segment_samples is None or len(segment_samples) == 0:
+        return None
+    if segment == "lanolin":
+        return _build_static_segment_signal(
+            segment_samples,
+            baseline_warning_threshold_pct=baseline_warning_threshold_pct,
+            baseline_duration_sec=baseline_duration_sec,
+        )
+    adjusted_baseline_duration_sec = baseline_duration_sec
+    adjusted_drug_apply_time_sec = drug_apply_time_sec
+    pre_roll_warning = None
+    if segment == "pbs" and curve_split is not None:
+        adjusted_baseline_duration_sec = PBS_BASELINE_PRE_ROLL_POINTS * DT_SEC
+        adjusted_drug_apply_time_sec = drug_apply_time_sec + (pre_roll_points * DT_SEC)
+        pre_roll_warning = _pbs_pre_roll_warning(pre_roll_points)
+
+    signal = analyze_signal(
+        segment_samples,
         baseline_warning_threshold_pct=baseline_warning_threshold_pct,
-        baseline_duration_sec=baseline_duration_sec,
-        drug_apply_time_sec=drug_apply_time_sec,
+        baseline_duration_sec=adjusted_baseline_duration_sec,
+        drug_apply_time_sec=adjusted_drug_apply_time_sec,
         drug_apply_tolerance_sec=drug_apply_tolerance_sec,
+    )
+    if signal is None or pre_roll_warning is None:
+        return signal
+    return replace(
+        signal,
+        timing_warning_details=(pre_roll_warning, *signal.timing_warning_details),
     )

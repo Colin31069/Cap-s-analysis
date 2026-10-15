@@ -1,15 +1,21 @@
 from __future__ import annotations
 
 import unittest
+import tempfile
+from pathlib import Path
 
 import numpy as np
+import pandas as pd
 
-from skin_analysis.analysis import analyze_signal
+from skin_analysis.analysis import analyze_signal, process_single_file, split_index_from_time_sec
 from skin_analysis.config import (
+    DATA_COL,
     DEFAULT_BASELINE_DURATION_SEC,
     DT_SEC,
     INITIAL_BASELINE_POINTS,
+    PBS_BASELINE_PRE_ROLL_POINTS,
 )
+from skin_analysis.models import CurveSplit
 
 
 class AnalyzeSignalTests(unittest.TestCase):
@@ -240,6 +246,90 @@ class AnalyzeSignalTests(unittest.TestCase):
         assert high_threshold_signal is not None
         self.assertEqual(low_threshold_signal.baseline_warning_status, "warning")
         self.assertEqual(high_threshold_signal.baseline_warning_status, "ok")
+
+    def test_split_index_from_time_clamps_to_valid_boundary(self) -> None:
+        self.assertEqual(split_index_from_time_sec(-10.0, 10), 1)
+        self.assertEqual(split_index_from_time_sec(0.24, 10), 2)
+        self.assertEqual(split_index_from_time_sec(99.0, 10), 9)
+
+    def test_process_single_file_uses_pre_roll_for_split_pbs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            file_path = Path(tmp_dir) / "1.xlsx"
+            samples = np.concatenate([
+                np.full(300, 20.0),
+                np.full(PBS_BASELINE_PRE_ROLL_POINTS, 10.0),
+                np.full(250, 10.0),
+                np.full(100, 15.0),
+            ])
+            pd.DataFrame({DATA_COL: samples}).to_excel(file_path, index=False)
+
+            signal = process_single_file(
+                str(file_path),
+                curve_split=CurveSplit(file_name="1.xlsx", split_index=500, split_time_sec=50.0),
+                segment="pbs",
+                baseline_duration_sec=10.0,
+                drug_apply_time_sec=25.0,
+                drug_apply_tolerance_sec=5.0,
+            )
+
+            self.assertIsNotNone(signal)
+            assert signal is not None
+            self.assertAlmostEqual(signal.time_sec[0], 0.0)
+            self.assertEqual(len(signal.capacitance), 550)
+            self.assertAlmostEqual(signal.initial_avg, 10.0)
+            self.assertEqual(signal.effective_baseline_points, PBS_BASELINE_PRE_ROLL_POINTS)
+            self.assertFalse(any("PBS baseline pre-roll" in detail for detail in signal.timing_warning_details))
+            self.assertAlmostEqual(signal.drop_time, 45.0)
+
+    def test_process_single_file_warns_when_split_pbs_pre_roll_is_short(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            file_path = Path(tmp_dir) / "1.xlsx"
+            samples = np.concatenate([
+                np.full(320, 10.0),
+                np.full(100, 15.0),
+            ])
+            pd.DataFrame({DATA_COL: samples}).to_excel(file_path, index=False)
+
+            signal = process_single_file(
+                str(file_path),
+                curve_split=CurveSplit(file_name="1.xlsx", split_index=120, split_time_sec=12.0),
+                segment="pbs",
+                baseline_duration_sec=10.0,
+                drug_apply_time_sec=20.0,
+                drug_apply_tolerance_sec=5.0,
+            )
+
+            self.assertIsNotNone(signal)
+            assert signal is not None
+            self.assertEqual(len(signal.capacitance), len(samples))
+            self.assertAlmostEqual(signal.initial_avg, 10.0)
+            self.assertTrue(
+                any(
+                    f"PBS baseline pre-roll 120/{PBS_BASELINE_PRE_ROLL_POINTS} points" in detail
+                    for detail in signal.timing_warning_details
+                )
+            )
+            self.assertAlmostEqual(signal.drop_time, 32.0)
+
+    def test_process_single_file_uses_split_left_segment_for_lanolin(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            file_path = Path(tmp_dir) / "1.xlsx"
+            samples = np.concatenate([np.full(50, 20.0), np.full(200, 10.0)])
+            pd.DataFrame({DATA_COL: samples}).to_excel(file_path, index=False)
+
+            signal = process_single_file(
+                str(file_path),
+                curve_split=CurveSplit(file_name="1.xlsx", split_index=50, split_time_sec=5.0),
+                segment="lanolin",
+                baseline_duration_sec=2.0,
+            )
+
+            self.assertIsNotNone(signal)
+            assert signal is not None
+            self.assertAlmostEqual(signal.time_sec[0], 0.0)
+            self.assertAlmostEqual(signal.time_sec[-1], 4.9)
+            self.assertEqual(len(signal.capacitance), 50)
+            self.assertAlmostEqual(signal.drop_time, 0.0)
 
 
 if __name__ == "__main__":

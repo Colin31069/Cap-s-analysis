@@ -10,6 +10,7 @@ FloatArray = NDArray[np.float64]
 BaselineWarningStatus = Literal["ok", "warning", "inaccurate"]
 DropDetectionSource = Literal["window", "fallback_auto"]
 DixonQSide = Literal["low", "high"]
+CurveSegment = Literal["pbs", "lanolin", "full"]
 
 
 @dataclass(frozen=True)
@@ -26,10 +27,28 @@ class ExcludedSample:
 
 
 @dataclass(frozen=True)
+class CurveSplit:
+    file_name: str
+    split_index: int
+    split_time_sec: float
+    left_label: str = "lanolin_reaction_curve"
+    right_label: str = "pbs_response_curve"
+
+
+@dataclass(frozen=True)
+class DropTimeOverride:
+    file_name: str
+    segment: CurveSegment
+    drop_time_sec: float
+
+
+@dataclass(frozen=True)
 class ExperimentMetadata:
     medicine_count: int
     medicines: list[MedicineEntry]
     excluded_samples: list[ExcludedSample] = field(default_factory=list)
+    curve_splits: list[CurveSplit] = field(default_factory=list)
+    drop_time_overrides: list[DropTimeOverride] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -70,15 +89,19 @@ class PlotSettings:
     drug_apply_tolerance_sec: float
     baseline_warning_threshold_pct: float
     custom_title: str = ""
+    analysis_segment: CurveSegment = "pbs"
 
 
 @dataclass(frozen=True)
 class PlotItem:
+    file_name: str
     sample_name: str
     x_plot: FloatArray
     y_plot: FloatArray
     label_txt: str
     drop_time: float
+    display_drop_time_sec: float
+    manual_drop_time: bool
     line_style: str
     line_color: Any | None
     effective_baseline_duration_sec: float

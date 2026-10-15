@@ -9,7 +9,8 @@ import numpy as np
 import pandas as pd
 
 from skin_analysis.metadata import save_experiment_metadata
-from skin_analysis.models import ExcludedSample, ExperimentMetadata, MedicineEntry, ProcessedSignal, StatisticalSample
+from skin_analysis.config import PBS_BASELINE_PRE_ROLL_POINTS
+from skin_analysis.models import CurveSplit, DropTimeOverride, ExcludedSample, ExperimentMetadata, MedicineEntry, ProcessedSignal, StatisticalSample
 from skin_analysis.statistics import (
     SCIPY_AVAILABLE,
     analyze_delta_percent_samples,
@@ -283,6 +284,71 @@ class StatisticsTests(unittest.TestCase):
         self.assertEqual(result.group_statistics[0].n, 4)
         self.assertIn("1pct/3.xlsx: bad contact", format_statistics_result(result))
         self.assertIn(["1pct", "3.xlsx", "", "bad contact"], statistics_result_to_csv_rows(result))
+
+    def test_collect_delta_percent_samples_marks_short_pbs_pre_roll_but_keeps_sample(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            group = root / "1pct"
+            group.mkdir()
+
+            pd.DataFrame({"pF - Plot 0": np.concatenate([np.full(320, 10.0), np.full(100, 15.0)])}).to_excel(
+                group / "1.xlsx",
+                index=False,
+            )
+            save_experiment_metadata(
+                str(group),
+                ExperimentMetadata(
+                    medicine_count=1,
+                    medicines=[MedicineEntry(name="", dose="")],
+                    curve_splits=[CurveSplit(file_name="1.xlsx", split_index=120, split_time_sec=12.0)],
+                ),
+            )
+
+            samples, warnings, _excluded_samples, _group_names = collect_delta_percent_samples(
+                tmp_dir,
+                baseline_duration_sec=5.0,
+                drug_apply_time_sec=20.0,
+                drug_apply_tolerance_sec=5.0,
+            )
+
+        self.assertEqual(len(samples), 1)
+        self.assertEqual(warnings, ())
+        self.assertAlmostEqual(samples[0].delta_percent, 50.0)
+        self.assertTrue(
+            any(
+                f"PBS baseline pre-roll 120/{PBS_BASELINE_PRE_ROLL_POINTS} points" in warning
+                for warning in samples[0].warnings
+            )
+        )
+
+    def test_collect_delta_percent_samples_ignores_manual_drop_overrides(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            group = root / "1pct"
+            group.mkdir()
+
+            pd.DataFrame({"pF - Plot 0": np.concatenate([np.full(50, 10.0), np.full(120, 15.0)])}).to_excel(
+                group / "1.xlsx",
+                index=False,
+            )
+            save_experiment_metadata(
+                str(group),
+                ExperimentMetadata(
+                    medicine_count=1,
+                    medicines=[MedicineEntry(name="", dose="")],
+                    drop_time_overrides=[DropTimeOverride(file_name="1.xlsx", segment="pbs", drop_time_sec=999.0)],
+                ),
+            )
+
+            samples, _warnings, _excluded_samples, _group_names = collect_delta_percent_samples(
+                tmp_dir,
+                baseline_duration_sec=5.0,
+                drug_apply_time_sec=10.0,
+                drug_apply_tolerance_sec=1.0,
+            )
+
+        self.assertEqual(len(samples), 1)
+        self.assertNotEqual(samples[0].drop_time, 999.0)
 
     def test_statistics_result_to_csv_rows_contains_export_sections(self) -> None:
         result = analyze_delta_percent_samples(
