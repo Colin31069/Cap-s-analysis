@@ -41,12 +41,13 @@ cd desktop-tauri
 npm run tauri:build:mac
 ```
 
-The macOS command prepares npm/Cargo dependencies, builds the frontend, and produces native `.app` and `.dmg` bundles under:
+The macOS command prepares npm/Cargo dependencies, builds the frontend, and collects the delivery files under:
 
 ```text
-src-tauri/target/release/bundle/macos/
-src-tauri/target/release/bundle/dmg/
+../releases/<version>/macos/
 ```
+
+The compiler output uses `CARGO_TARGET_DIR` when set, or `cap-s-packaging/target-macos/` under the operating system's temporary directory. This keeps build caches separate from the files sent to recipients.
 
 For a universal Apple Silicon + Intel build, install both Rust targets once and then run the universal script:
 
@@ -55,9 +56,11 @@ rustup target add aarch64-apple-darwin x86_64-apple-darwin
 npm run tauri:build:mac:universal
 ```
 
-Use `npm run tauri:build:mac:cached` when `dist/` and Cargo dependencies are already current and you only want to rerun the Tauri bundler.
+Use `npm run tauri:build:mac:cached` when `dist/` and Cargo dependencies are already current to skip dependency preparation and the frontend rebuild. Add `-- --cached` to the universal command for the same behavior.
 
 Unsigned local builds are useful for internal testing. For distribution outside your own machine, sign and notarize the app with an Apple Developer ID certificate.
+
+The macOS wrapper stages the `.dmg` and `.app.zip` in `../releases/<version>/macos/`, with recipient instructions and SHA-256 checksums. Both contain the signed `.app`; temporary app staging stays outside File Provider folders to keep Finder metadata from invalidating its signature. It uses the existing Developer ID Application identity when available and otherwise signs ad-hoc. Notarization is a separate release step; ad-hoc builds can prompt or be blocked by Gatekeeper on another Mac. Universal builds contain both Apple Silicon and Intel binaries; deployment targets are checked in the finished bundle.
 
 ### Windows packaging
 
@@ -65,6 +68,8 @@ Unsigned local builds are useful for internal testing. For distribution outside 
 npm run tauri:build:win
 npm run tauri:build:all
 ```
+
+`tauri:build:win` builds an x64 NSIS installer on Windows, or uses `cargo-xwin` when run on macOS. It embeds the WebView2 offline installer and stages the setup executable, instructions, and SHA-256 checksum in `../releases/<version>/windows/`. Recipients do not need Python, Node.js, Rust, or a separate WebView2 download. See [WINDOWS_DISTRIBUTION.md](./WINDOWS_DISTRIBUTION.md) for cross-build prerequisites and verification limits.
 
 Use `npm run tauri:build:exe` to compile the release app without producing an installer.
 

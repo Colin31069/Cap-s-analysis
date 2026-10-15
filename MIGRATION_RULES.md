@@ -1,5 +1,9 @@
 # Parallel Migration Rules
 
+## CAP-S product boundary
+
+The dedicated CAP-S mean-curve and SD/SEM error-band product lives in `cap-s-studio/`, with its own `cap_s` Python package, launcher, Tk interface, build spec, and `releases/cap-s/` delivery directory. Its default band is SEM. Keep its interface focused on data groups, curve settings, and image/CSV export. It is not the Skin Analysis Tauri migration described below; do not package `desktop-tauri/` as the CAP-S product. Windows CAP-S packaging is deferred until a native Windows build environment is available, as requested by the user.
+
 This repository now contains two maintained desktop implementations:
 
 - Python reference app in `Python version/`

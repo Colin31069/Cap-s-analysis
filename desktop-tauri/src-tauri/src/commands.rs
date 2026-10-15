@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use tauri::AppHandle;
 use tauri_plugin_dialog::DialogExt;
+use tauri_plugin_fs::FsExt;
 
 use crate::analysis::process_single_file;
 use crate::config::{COLOR_PALETTE, DEFAULT_ROOT_PATH, LINE_STYLE_CYCLE};
@@ -202,8 +203,22 @@ pub fn run_statistics(request: StatisticsRequest) -> Result<StatisticsResponse, 
 
 // ── Export ─────────────────────────────────────────────────────────────────────
 
+fn authorize_export_path(
+    scope: &tauri::scope::fs::Scope,
+    path: Option<PathBuf>,
+) -> Result<Option<String>, AppError> {
+    if let Some(path) = path {
+        scope
+            .allow_file(&path)
+            .map_err(|e| AppError::new("export_permission_error", e.to_string()))?;
+        Ok(Some(path.to_string_lossy().into_owned()))
+    } else {
+        Ok(None)
+    }
+}
+
 #[tauri::command]
-pub fn choose_export_path(
+pub async fn choose_export_path(
     app: AppHandle,
     suggested_name: Option<String>,
 ) -> Result<Option<String>, AppError> {
@@ -218,11 +233,11 @@ pub fn choose_export_path(
         .map(|fp| fp.into_path())
         .transpose()
         .map_err(|e| AppError::new("dialog_error", e.to_string()))?;
-    Ok(path.map(|p| p.to_string_lossy().into_owned()))
+    authorize_export_path(&app.fs_scope(), path)
 }
 
 #[tauri::command]
-pub fn choose_csv_export_path(
+pub async fn choose_csv_export_path(
     app: AppHandle,
     suggested_name: Option<String>,
 ) -> Result<Option<String>, AppError> {
@@ -237,5 +252,42 @@ pub fn choose_csv_export_path(
         .map(|fp| fp.into_path())
         .transpose()
         .map_err(|e| AppError::new("dialog_error", e.to_string()))?;
-    Ok(path.map(|p| p.to_string_lossy().into_owned()))
+    authorize_export_path(&app.fs_scope(), path)
+}
+
+#[cfg(test)]
+mod export_permission_tests {
+    use super::*;
+    use tauri_plugin_fs::FsExt;
+
+    #[test]
+    fn selected_export_file_is_allowed_without_allowing_siblings() {
+        let app = tauri::test::mock_builder()
+            .plugin(tauri_plugin_fs::init())
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))
+            .unwrap();
+        let directory = tempfile::tempdir().unwrap();
+        let selected = directory.path().join("plot.png");
+        let sibling = directory.path().join("other.png");
+        let scope = app.fs_scope();
+
+        let result = authorize_export_path(&scope, Some(selected.clone())).unwrap();
+
+        assert_eq!(result, Some(selected.to_string_lossy().into_owned()));
+        assert!(scope.is_allowed(&selected));
+        assert!(!scope.is_allowed(&sibling));
+    }
+
+    #[test]
+    fn cancelled_export_does_not_grant_file_access() {
+        let app = tauri::test::mock_builder()
+            .plugin(tauri_plugin_fs::init())
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))
+            .unwrap();
+        let directory = tempfile::tempdir().unwrap();
+        let scope = app.fs_scope();
+
+        assert_eq!(authorize_export_path(&scope, None).unwrap(), None);
+        assert!(!scope.is_allowed(directory.path().join("statistics.csv")));
+    }
 }

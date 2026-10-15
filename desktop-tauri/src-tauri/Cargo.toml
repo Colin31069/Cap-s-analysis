@@ -25,6 +25,7 @@ tauri-plugin-fs = "2"
 approx = "0.5"
 rust_xlsxwriter = "0.81"
 tempfile = "3"
+tauri = { version = "2", features = ["test"] }
 
 [profile.release]
 opt-level = 1
