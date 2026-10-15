@@ -1,6 +1,10 @@
 # Skin Analysis 工具說明
 
+> **CAP-S 誤差區域圖專用版 [`Cap-s data analysis`](./cap-s-studio/README_PORTABLE.md) 已獨立至 `cap-s-studio/`。** 介面依序顯示「選擇資料夾 → 勾選組別 → 製圖與匯出」，完成目前步驟才顯示下一步，並可返回修改。使用 Python／Tk、預設 Mean ± SEM，可切換 SD，提供 PNG／PDF／SVG／CSV 匯出。支援掃描根目錄本身及往下三層資料夾，以相對路徑區分實驗組。請從該資料夾的 `main.py` 或 `releases/cap-s/1.0.5/` 的 `CapSStudio` 分享包啟動。以下原有文件描述 Skin Analysis；`desktop-tauri` 的 Skin Analysis 安裝檔不具備 CAP-S 誤差帶介面。Windows CAP-S EXE 依使用者選擇，待有原生 Windows 環境再建置。
+
 這個專案是一個用 `Tkinter` 與 `Matplotlib` 製作的桌面 GUI 工具，用來瀏覽實驗資料夾、讀取 `.xlsx` 原始電容資料、偵測 drop 時間，並將結果以不同模式繪圖顯示。
+
+計算公式、流程圖、統計方法與可信度限制請參閱[分析流程與方法說明](./ANALYSIS_METHOD.md)。
 
 ## 環境需求
 
@@ -286,3 +290,15 @@ npm run tauri:build:mac
 Run it on a macOS host. It creates `.app` and `.dmg` bundles under `desktop-tauri/src-tauri/target/release/bundle/`. For a universal Apple Silicon + Intel build, install both Rust targets and run `npm run tauri:build:mac:universal`.
 
 Windows NSIS packaging is still available as `npm run tauri:build:win`.
+
+## 傳送桌面安裝包給其他使用者
+
+Tauri 桌面版的交付檔放在 `releases/<版本>/`，收件者不需要安裝 Python、Node.js 或 Rust。Windows 安裝包附帶 WebView2 離線安裝程式；macOS 使用系統內建的 WebKit。Plotly 繪圖資源包含在程式內，分析與繪圖可離線使用。
+
+- Windows：傳送 `windows/` 中的 `*-setup.exe`。收件者雙擊安裝，再從開始功能表開啟 Skin Analysis Desktop。
+- macOS：傳送 `macos/` 中的 `.dmg`。收件者開啟磁碟映像，把 Skin Analysis Desktop 拖到 Applications，再從 Applications 開啟。
+- 每個平台資料夾附有 `README.txt` 與 `SHA256SUMS.txt`，記錄使用方式和交付檔 SHA-256。
+
+目前沒有配置公開發行所需的簽章憑證。Windows 可能顯示 SmartScreen 發行者提示；macOS ad-hoc 簽名未經 Apple 公證，首次開啟可能需要在「系統設定 → 隱私權與安全性」允許此程式。若需要收件者直接開啟且沒有此類提示，必須使用有效的 Windows 程式碼簽章與 Apple Developer ID 簽章、公證流程。
+
+程式不包含實驗資料。開啟後請選取自己的實驗根目錄；每個直接子資料夾是一組實驗，Excel 檔需包含 `pF - Plot 0` 欄位。平台建置方式與驗證範圍另見 `desktop-tauri/` 的平台發行文件。

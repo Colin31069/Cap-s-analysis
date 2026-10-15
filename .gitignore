@@ -211,9 +211,13 @@ cython_debug/
 desktop-tauri/public/vendor/plotly.min.js
 desktop-tauri/src-tauri/vendor/
 desktop-tauri/src-tauri/.cargo/config.toml
+desktop-tauri/src-tauri/gen/schemas/macOS-schema.json
 
 # Marimo
 marimo/_static/
 marimo/_lsp/
 __marimo__/
 .DS_Store
+
+# Generated desktop installers and delivery bundles
+/releases/
