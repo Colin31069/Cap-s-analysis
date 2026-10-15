@@ -6,12 +6,15 @@ import tkinter as tk
 from itertools import cycle
 from tkinter import filedialog, messagebox, simpledialog, ttk
 
+import numpy as np
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 from matplotlib.figure import Figure
 from matplotlib.patches import Patch
 
+from .analysis import pbs_pre_roll_window_indices, read_xlsx_single, split_index_from_time_sec
 from .config import (
     COLOR_PALETTE,
+    DATA_COL,
     DEFAULT_BASELINE_DURATION_SEC,
     DEFAULT_BASELINE_WARNING_THRESHOLD_PCT,
     DEFAULT_MEDICINE_COUNT,
@@ -19,18 +22,22 @@ from .config import (
     DEFAULT_DRUG_APPLY_TOLERANCE_SEC,
     DIXON_Q_EXCLUSION_METHOD,
     DEFAULT_ROOT_PATH,
+    DT_SEC,
     MAX_MEDICINES,
+    PBS_BASELINE_PRE_ROLL_POINTS,
 )
 from .exclusions import current_excluded_samples, max_excluded_samples
 from .filesystem import get_subfolders, list_xlsx_files, normalize_directory_path, resolve_directory_path
 from .metadata import (
     default_experiment_metadata,
+    curve_split_for_file,
+    drop_time_override_for_file,
     load_experiment_metadata,
     metadata_file_path,
     save_experiment_metadata,
 )
-from .models import ExcludedSample, ExperimentMetadata, MedicineEntry, PlotPayload, PlotSettings, StatisticalAnalysisResult
-from .plotting import build_overlay_legend_group_label, build_plot_payload, build_plot_title
+from .models import DropTimeOverride, CurveSplit, ExcludedSample, ExperimentMetadata, MedicineEntry, PlotPayload, PlotItem, PlotSettings, StatisticalAnalysisResult
+from .plotting import build_overlay_legend_group_label, build_plot_payload
 from .statistics import (
     build_dixon_q_review_for_group,
     build_statistical_analysis,
@@ -82,6 +89,7 @@ class RawDataViewerApp(tk.Tk):
         self.show_grid_var = tk.BooleanVar(value=True)
         self.overlay_mode_var = tk.BooleanVar(value=False)
         self.display_mode_var = tk.StringVar(value="Norm")
+        self.segment_mode_var = tk.StringVar(value="pbs")
         self.group_color_var = tk.BooleanVar(value=True)
         self.baseline_duration_var = tk.StringVar(value=f"{DEFAULT_BASELINE_DURATION_SEC:.1f}")
         self.drug_apply_time_var = tk.StringVar(value=f"{DEFAULT_DRUG_APPLY_TIME_SEC:.1f}")
@@ -107,6 +115,8 @@ class RawDataViewerApp(tk.Tk):
         self._medicine_row_frames: list[ttk.LabelFrame] = []
         self._sample_file_names: list[str] = []
         self._excluded_samples: list[ExcludedSample] = []
+        self._curve_splits: list[CurveSplit] = []
+        self._drop_time_overrides: list[DropTimeOverride] = []
         self._dixon_suggested_reasons: dict[str, str] = {}
         self._is_loading_metadata = False
         self._metadata_expanded = False
@@ -114,6 +124,17 @@ class RawDataViewerApp(tk.Tk):
         self._warning_dialog: tk.Toplevel | None = None
         self._last_default_plot_title = ""
         self._overlay_legend_entries: dict[str, object] = {}
+        self._split_pick_sample_file = ""
+        self._split_pick_connection_id: int | None = None
+        self._last_plot_payload: PlotPayload | None = None
+        self._drop_adjust_item: PlotItem | None = None
+        self._drop_adjust_line = None
+        self._drop_adjust_press_connection_id: int | None = None
+        self._drop_adjust_motion_connection_id: int | None = None
+        self._drop_adjust_release_connection_id: int | None = None
+        self._drop_adjust_is_dragging = False
+        self._drop_adjust_current_x = 0.0
+        self._plot_line_colors_by_file: dict[str, object] = {}
 
         self.create_widgets()
         self.custom_plot_title_var.trace_add("write", self._on_custom_plot_title_changed)
@@ -241,6 +262,72 @@ class RawDataViewerApp(tk.Tk):
         self.run_dixon_btn.pack(fill=tk.X, pady=(5, 0))
         self._control_widgets.append(self.run_dixon_btn)
         self._refresh_sample_exclusion_list()
+
+        ttk.Separator(controls_frame, orient="horizontal").pack(fill="x", pady=10)
+
+        split_frame = ttk.LabelFrame(controls_frame, text="Curve Split", padding=5)
+        split_frame.pack(fill=tk.X, pady=5)
+
+        self.pick_split_btn = ttk.Button(
+            split_frame,
+            text="Pick Split Point",
+            command=self.pick_split_for_selected_sample,
+        )
+        self.pick_split_btn.pack(fill=tk.X)
+        self._control_widgets.append(self.pick_split_btn)
+
+        self.clear_split_btn = ttk.Button(
+            split_frame,
+            text="Clear Selected Split",
+            command=self.clear_split_for_selected_sample,
+        )
+        self.clear_split_btn.pack(fill=tk.X, pady=(5, 0))
+        self._control_widgets.append(self.clear_split_btn)
+
+        self.adjust_drop_btn = ttk.Button(
+            split_frame,
+            text="Adjust Drop",
+            command=self.adjust_drop_for_selected_sample,
+        )
+        self.adjust_drop_btn.pack(fill=tk.X, pady=(8, 0))
+        self._control_widgets.append(self.adjust_drop_btn)
+
+        self.clear_drop_adjustment_btn = ttk.Button(
+            split_frame,
+            text="Clear Drop Adjustment",
+            command=self.clear_drop_adjustment_for_selected_sample,
+        )
+        self.clear_drop_adjustment_btn.pack(fill=tk.X, pady=(5, 0))
+        self._control_widgets.append(self.clear_drop_adjustment_btn)
+
+        ttk.Label(split_frame, text="Plot/analysis segment").pack(anchor=tk.W, pady=(8, 0))
+        self.segment_pbs_rb = ttk.Radiobutton(
+            split_frame,
+            text="PBS Segment",
+            variable=self.segment_mode_var,
+            value="pbs",
+            command=self._refresh_sample_exclusion_list,
+        )
+        self.segment_pbs_rb.pack(anchor=tk.W)
+        self._control_widgets.append(self.segment_pbs_rb)
+        self.segment_lanolin_rb = ttk.Radiobutton(
+            split_frame,
+            text="Lanolin Segment",
+            variable=self.segment_mode_var,
+            value="lanolin",
+            command=self._refresh_sample_exclusion_list,
+        )
+        self.segment_lanolin_rb.pack(anchor=tk.W)
+        self._control_widgets.append(self.segment_lanolin_rb)
+        self.segment_full_rb = ttk.Radiobutton(
+            split_frame,
+            text="Full Curve",
+            variable=self.segment_mode_var,
+            value="full",
+            command=self._refresh_sample_exclusion_list,
+        )
+        self.segment_full_rb.pack(anchor=tk.W)
+        self._control_widgets.append(self.segment_full_rb)
 
         ttk.Separator(controls_frame, orient="horizontal").pack(fill="x", pady=10)
 
@@ -532,6 +619,8 @@ class RawDataViewerApp(tk.Tk):
 
             self._set_visible_medicine_rows(count)
             self._excluded_samples = list(metadata.excluded_samples)
+            self._curve_splits = list(metadata.curve_splits)
+            self._drop_time_overrides = list(metadata.drop_time_overrides)
             self._dixon_suggested_reasons.clear()
             if hasattr(self, "sample_exclusion_list"):
                 self._refresh_sample_exclusion_list()
@@ -549,11 +638,45 @@ class RawDataViewerApp(tk.Tk):
         ]
         files = self._sample_file_names or self._current_sample_files()
         excluded_samples = current_excluded_samples(self._excluded_samples, files)
+        curve_splits = self._current_curve_splits(files)
+        drop_time_overrides = self._current_drop_time_overrides(files)
         return ExperimentMetadata(
             medicine_count=count,
             medicines=medicines,
             excluded_samples=excluded_samples,
+            curve_splits=curve_splits,
+            drop_time_overrides=drop_time_overrides,
         )
+
+    def _current_curve_splits(self, files: list[str]) -> list[CurveSplit]:
+        file_keys = {file_name.casefold() for file_name in files}
+        split_by_key: dict[str, CurveSplit] = {}
+        for entry in self._curve_splits:
+            file_name = os.path.basename(entry.file_name.strip())
+            if not file_name or file_name.casefold() not in file_keys:
+                continue
+            split_by_key[file_name.casefold()] = CurveSplit(
+                file_name=file_name,
+                split_index=max(1, int(entry.split_index)),
+                split_time_sec=max(0.0, float(entry.split_time_sec)),
+                left_label=entry.left_label,
+                right_label=entry.right_label,
+            )
+        return list(split_by_key.values())
+
+    def _current_drop_time_overrides(self, files: list[str]) -> list[DropTimeOverride]:
+        file_keys = {file_name.casefold() for file_name in files}
+        override_by_key: dict[tuple[str, str], DropTimeOverride] = {}
+        for entry in self._drop_time_overrides:
+            file_name = os.path.basename(entry.file_name.strip())
+            if not file_name or file_name.casefold() not in file_keys:
+                continue
+            override_by_key[(file_name.casefold(), entry.segment)] = DropTimeOverride(
+                file_name=file_name,
+                segment=entry.segment,
+                drop_time_sec=max(0.0, float(entry.drop_time_sec)),
+            )
+        return list(override_by_key.values())
 
     def _refresh_sample_exclusion_list(self) -> None:
         if not hasattr(self, "sample_exclusion_list"):
@@ -564,17 +687,28 @@ class RawDataViewerApp(tk.Tk):
         excluded_samples = current_excluded_samples(self._excluded_samples, files)
         excluded_reason_by_file = {entry.file_name: entry.reason for entry in excluded_samples}
         max_allowed = max_excluded_samples(len(files))
+        display_metadata = ExperimentMetadata(
+            0,
+            [],
+            curve_splits=self._current_curve_splits(files),
+            drop_time_overrides=self._current_drop_time_overrides(files),
+        )
+        current_segment = self.segment_mode_var.get()
 
         self.sample_exclusion_list.delete(0, tk.END)
         for file_name in files:
             excluded_entry = next((entry for entry in excluded_samples if entry.file_name == file_name), None)
             reason = excluded_reason_by_file.get(file_name)
+            split_entry = curve_split_for_file(display_metadata, file_name)
+            drop_override = drop_time_override_for_file(display_metadata, file_name, current_segment)
+            split_suffix = f" [split {split_entry.split_time_sec:.1f}s]" if split_entry is not None else ""
+            drop_suffix = " [manual drop]" if drop_override is not None else ""
             if excluded_entry is not None:
                 method_suffix = " [Dixon Q]" if excluded_entry.method == DIXON_Q_EXCLUSION_METHOD else ""
                 suffix = f" - {reason}" if reason else ""
-                self.sample_exclusion_list.insert(tk.END, f"[OUT] {file_name}{method_suffix}{suffix}")
+                self.sample_exclusion_list.insert(tk.END, f"[OUT] {file_name}{split_suffix}{drop_suffix}{method_suffix}{suffix}")
             else:
-                self.sample_exclusion_list.insert(tk.END, f"[IN]  {file_name}")
+                self.sample_exclusion_list.insert(tk.END, f"[IN]  {file_name}{split_suffix}{drop_suffix}")
 
         included_count = len(files) - len(excluded_samples)
         displayed_max_allowed = max(max_allowed, len(excluded_samples))
@@ -670,6 +804,273 @@ class RawDataViewerApp(tk.Tk):
         self._refresh_sample_exclusion_list()
         self._autosave_current_metadata()
 
+    def _disconnect_split_pick(self) -> None:
+        if self._split_pick_connection_id is not None:
+            self.canvas.mpl_disconnect(self._split_pick_connection_id)
+            self._split_pick_connection_id = None
+        self._split_pick_sample_file = ""
+
+    def _replace_curve_split(self, curve_split: CurveSplit) -> None:
+        key = curve_split.file_name.casefold()
+        retained = [
+            entry
+            for entry in self._current_curve_splits(self._current_sample_files())
+            if entry.file_name.casefold() != key
+        ]
+        self._curve_splits = retained + [curve_split]
+
+    def pick_split_for_selected_sample(self) -> None:
+        file_name = self._selected_sample_file()
+        if not file_name:
+            messagebox.showwarning("No Sample Selected", "Please select a sample before picking a split point.")
+            return
+
+        file_path = os.path.join(self._current_experiment_dir(), file_name)
+        df = read_xlsx_single(file_path)
+        if df is None or df.empty:
+            messagebox.showerror("Load Failed", f"Could not load {file_name}.")
+            return
+
+        samples = df[DATA_COL].to_numpy(dtype=float)
+        if len(samples) < 2:
+            messagebox.showwarning("Too Short", "This sample needs at least two data points to split.")
+            return
+
+        self._disconnect_split_pick()
+        time_sec = np.arange(len(samples), dtype=float) * DT_SEC
+        self.ax.clear()
+        self.ax.plot(time_sec, samples, color=COLOR_PALETTE[0], lw=1.2)
+        self.ax.set_title(f"Pick split point for {file_name}", fontsize=12)
+        self.ax.set_xlabel("Original Time (s)")
+        self.ax.set_ylabel("Raw Capacitance (pF)")
+        self._apply_grid_preference()
+        self.fig.tight_layout()
+        self.canvas.draw_idle()
+
+        self._split_pick_sample_file = file_name
+        self._split_pick_connection_id = self.canvas.mpl_connect("button_press_event", self._on_split_pick_click)
+        messagebox.showinfo(
+            "Pick Split Point",
+            "Click the boundary point on the preview plot.\nLeft side will be lanolin; right side will be PBS.",
+        )
+
+    def _on_split_pick_click(self, event) -> None:
+        if not self._split_pick_sample_file or event.inaxes is not self.ax or event.xdata is None:
+            return
+
+        file_name = self._split_pick_sample_file
+        file_path = os.path.join(self._current_experiment_dir(), file_name)
+        df = read_xlsx_single(file_path)
+        if df is None or df.empty:
+            self._disconnect_split_pick()
+            messagebox.showerror("Load Failed", f"Could not reload {file_name}.")
+            return
+
+        sample_count = len(df[DATA_COL])
+        split_index = split_index_from_time_sec(float(event.xdata), sample_count)
+        split_time_sec = split_index * DT_SEC
+        curve_split = CurveSplit(
+            file_name=file_name,
+            split_index=split_index,
+            split_time_sec=split_time_sec,
+        )
+        self._replace_curve_split(curve_split)
+        self._autosave_current_metadata()
+        self._refresh_sample_exclusion_list()
+        self._select_sample_file(file_name)
+
+        pre_roll_start_index, _split_index, pre_roll_points = pbs_pre_roll_window_indices(curve_split, sample_count)
+        pre_roll_start_time_sec = pre_roll_start_index * DT_SEC
+        self.ax.axvspan(
+            pre_roll_start_time_sec,
+            split_time_sec,
+            color=COLOR_PALETTE[2],
+            alpha=0.18,
+            label="PBS baseline pre-roll",
+        )
+        self.ax.axvline(split_time_sec, color="black", ls="--", alpha=0.8)
+        self.canvas.draw_idle()
+        self._disconnect_split_pick()
+        if pre_roll_points < PBS_BASELINE_PRE_ROLL_POINTS:
+            messagebox.showwarning(
+                "Split Saved - Short Baseline",
+                (
+                    f"{file_name} split saved at {split_time_sec:.1f}s.\n\n"
+                    f"PBS baseline pre-roll has {pre_roll_points}/{PBS_BASELINE_PRE_ROLL_POINTS} points before split. "
+                    "This sample will still be included and marked in plot/statistics warnings."
+                ),
+            )
+        else:
+            messagebox.showinfo(
+                "Split Saved",
+                (
+                    f"{file_name} split saved at {split_time_sec:.1f}s.\n\n"
+                    f"PBS baseline pre-roll: {pre_roll_points}/{PBS_BASELINE_PRE_ROLL_POINTS} points."
+                ),
+            )
+
+    def clear_split_for_selected_sample(self) -> None:
+        file_name = self._selected_sample_file()
+        if not file_name:
+            messagebox.showwarning("No Sample Selected", "Please select a sample before clearing a split point.")
+            return
+
+        key = file_name.casefold()
+        current_splits = self._current_curve_splits(self._current_sample_files())
+        if not any(entry.file_name.casefold() == key for entry in current_splits):
+            messagebox.showinfo("No Split", f"{file_name} has no saved split point.")
+            return
+
+        self._curve_splits = [entry for entry in current_splits if entry.file_name.casefold() != key]
+        self._autosave_current_metadata()
+        self._refresh_sample_exclusion_list()
+        self._select_sample_file(file_name)
+        messagebox.showinfo("Split Cleared", f"{file_name} split point was cleared.")
+
+    def _disconnect_drop_adjust(self, remove_line: bool = True) -> None:
+        for connection_id in (
+            self._drop_adjust_press_connection_id,
+            self._drop_adjust_motion_connection_id,
+            self._drop_adjust_release_connection_id,
+        ):
+            if connection_id is not None:
+                self.canvas.mpl_disconnect(connection_id)
+
+        self._drop_adjust_press_connection_id = None
+        self._drop_adjust_motion_connection_id = None
+        self._drop_adjust_release_connection_id = None
+        self._drop_adjust_is_dragging = False
+        self._drop_adjust_item = None
+        if remove_line and self._drop_adjust_line is not None:
+            try:
+                self._drop_adjust_line.remove()
+            except ValueError:
+                pass
+            self._drop_adjust_line = None
+            self.canvas.draw_idle()
+
+    def _replace_drop_time_override(self, drop_override: DropTimeOverride) -> None:
+        key = (drop_override.file_name.casefold(), drop_override.segment)
+        retained = [
+            entry
+            for entry in self._current_drop_time_overrides(self._current_sample_files())
+            if (entry.file_name.casefold(), entry.segment) != key
+        ]
+        self._drop_time_overrides = retained + [drop_override]
+
+    def _plot_item_for_file(self, file_name: str) -> PlotItem | None:
+        if self._last_plot_payload is None:
+            return None
+        for item in self._last_plot_payload.plot_items:
+            if item.file_name == file_name:
+                return item
+        return None
+
+    def adjust_drop_for_selected_sample(self) -> None:
+        file_name = self._selected_sample_file()
+        if not file_name:
+            messagebox.showwarning("No Sample Selected", "Please select a sample before adjusting drop alignment.")
+            return
+        if self.display_mode_var.get() == "Base":
+            messagebox.showwarning("Baseline View", "Drop alignment is not available in Baseline Only mode.")
+            return
+
+        item = self._plot_item_for_file(file_name)
+        if item is None:
+            messagebox.showwarning(
+                "Sample Not Plotted",
+                "Load a plot that includes the selected sample before adjusting drop alignment.",
+            )
+            return
+
+        self._disconnect_drop_adjust()
+        self._drop_adjust_item = item
+        self._drop_adjust_current_x = 0.0
+        color = self._plot_line_colors_by_file.get(file_name, "black")
+        self._drop_adjust_line = self.ax.axvline(
+            x=0.0,
+            color=color,
+            ls="-",
+            lw=2.5,
+            alpha=0.95,
+        )
+        self._drop_adjust_press_connection_id = self.canvas.mpl_connect("button_press_event", self._on_drop_adjust_press)
+        self._drop_adjust_motion_connection_id = self.canvas.mpl_connect("motion_notify_event", self._on_drop_adjust_motion)
+        self._drop_adjust_release_connection_id = self.canvas.mpl_connect("button_release_event", self._on_drop_adjust_release)
+        self.canvas.draw_idle()
+        messagebox.showinfo(
+            "Adjust Drop",
+            (
+                f"Drag the highlighted drop handle for {file_name} to the true drop point.\n\n"
+                "Only the plot alignment will change; statistics and Delta % stay unchanged."
+            ),
+        )
+
+    def _set_drop_adjust_x(self, x_value: float) -> None:
+        self._drop_adjust_current_x = float(x_value)
+        if self._drop_adjust_line is not None:
+            self._drop_adjust_line.set_xdata([self._drop_adjust_current_x, self._drop_adjust_current_x])
+            self.canvas.draw_idle()
+
+    def _on_drop_adjust_press(self, event) -> None:
+        if self._drop_adjust_item is None or event.inaxes is not self.ax or event.xdata is None:
+            return
+        if getattr(event, "button", 1) != 1:
+            return
+        self._drop_adjust_is_dragging = True
+        self._set_drop_adjust_x(float(event.xdata))
+
+    def _on_drop_adjust_motion(self, event) -> None:
+        if not self._drop_adjust_is_dragging or event.inaxes is not self.ax or event.xdata is None:
+            return
+        self._set_drop_adjust_x(float(event.xdata))
+
+    def _on_drop_adjust_release(self, event) -> None:
+        if self._drop_adjust_item is None or not self._drop_adjust_is_dragging:
+            return
+        if event.inaxes is self.ax and event.xdata is not None:
+            self._set_drop_adjust_x(float(event.xdata))
+
+        item = self._drop_adjust_item
+        new_drop_time_sec = max(0.0, item.display_drop_time_sec + self._drop_adjust_current_x)
+        drop_override = DropTimeOverride(
+            file_name=item.file_name,
+            segment=self.segment_mode_var.get(),
+            drop_time_sec=new_drop_time_sec,
+        )
+        self._replace_drop_time_override(drop_override)
+        self._autosave_current_metadata()
+        self._refresh_sample_exclusion_list()
+        self._select_sample_file(item.file_name)
+        self._disconnect_drop_adjust(remove_line=False)
+        self.plot_data()
+
+    def clear_drop_adjustment_for_selected_sample(self) -> None:
+        file_name = self._selected_sample_file()
+        if not file_name:
+            messagebox.showwarning("No Sample Selected", "Please select a sample before clearing drop alignment.")
+            return
+
+        segment = self.segment_mode_var.get()
+        key = (file_name.casefold(), segment)
+        current_overrides = self._current_drop_time_overrides(self._current_sample_files())
+        if not any((entry.file_name.casefold(), entry.segment) == key for entry in current_overrides):
+            messagebox.showinfo("No Drop Adjustment", f"{file_name} has no manual drop alignment for {segment}.")
+            return
+
+        self._drop_time_overrides = [
+            entry
+            for entry in current_overrides
+            if (entry.file_name.casefold(), entry.segment) != key
+        ]
+        self._autosave_current_metadata()
+        self._refresh_sample_exclusion_list()
+        self._select_sample_file(file_name)
+        self._disconnect_drop_adjust()
+        if self._last_plot_payload is not None:
+            self.plot_data()
+        messagebox.showinfo("Drop Adjustment Cleared", f"{file_name} manual drop alignment was cleared.")
+
     def run_dixon_q_for_current_experiment(self) -> None:
         if self.is_plotting:
             return
@@ -710,6 +1111,7 @@ class RawDataViewerApp(tk.Tk):
                     experiment_name,
                     target_dir,
                     metadata.excluded_samples,
+                    curve_splits=metadata.curve_splits,
                     baseline_warning_threshold_pct=baseline_warning_threshold_pct,
                     baseline_duration_sec=baseline_duration_sec,
                     drug_apply_time_sec=drug_apply_time_sec,
@@ -913,7 +1315,10 @@ class RawDataViewerApp(tk.Tk):
         return True
 
     def clear_plot(self) -> None:
+        self._disconnect_split_pick()
+        self._disconnect_drop_adjust()
         self.ax.clear()
+        self._last_plot_payload = None
         self._last_default_plot_title = ""
         self.ax.set_title("Ready", fontsize=14)
         self.ax.set_xlabel("Time from Drop (s)")
@@ -921,6 +1326,7 @@ class RawDataViewerApp(tk.Tk):
         self._apply_grid_preference()
         self.color_cycler = cycle(COLOR_PALETTE)
         self._overlay_legend_entries.clear()
+        self._plot_line_colors_by_file.clear()
         self.ax.set_prop_cycle(None)
         self.canvas.draw_idle()
 
@@ -950,6 +1356,8 @@ class RawDataViewerApp(tk.Tk):
     def plot_data(self) -> None:
         if self.is_plotting:
             return
+        self._disconnect_split_pick()
+        self._disconnect_drop_adjust()
 
         experiment_name = self.experiment_var.get().strip()
         if not experiment_name:
@@ -1001,6 +1409,7 @@ class RawDataViewerApp(tk.Tk):
             drug_apply_tolerance_sec=drug_apply_tolerance_sec,
             baseline_warning_threshold_pct=baseline_warning_threshold_pct,
             custom_title=self.custom_plot_title_var.get().strip(),
+            analysis_segment=self.segment_mode_var.get(),
         )
         group_color = self._group_color_for_settings(settings)
 
@@ -1024,9 +1433,13 @@ class RawDataViewerApp(tk.Tk):
         if not settings.is_overlay:
             self.clear_plot()
 
-        self._last_default_plot_title = build_plot_title(settings.experiment_name, settings.metadata)
+        self._last_plot_payload = payload
+        self._last_default_plot_title = payload.title
         self.ax.set_title(self._current_plot_title(), fontsize=12)
-        self.ax.set_xlabel("Time from Drop (s)")
+        if settings.analysis_segment == "lanolin":
+            self.ax.set_xlabel("Original Time (s)")
+        else:
+            self.ax.set_xlabel("Time from Drop (s)")
         self.ax.set_ylabel(payload.y_unit)
         self._apply_grid_preference()
 
@@ -1045,11 +1458,14 @@ class RawDataViewerApp(tk.Tk):
             )
             if first_line_color is None:
                 first_line_color = line.get_color()
+            self._plot_line_colors_by_file[item.file_name] = line.get_color()
 
             if settings.display_mode != "Base" and settings.show_drop_lines:
                 self.ax.axvline(x=item.drop_time, color=line.get_color(), ls="--", alpha=0.3)
 
         if count > 0:
+            if not settings.is_overlay:
+                self.ax.set_title(f"{self._current_plot_title()} (n={count})", fontsize=12)
             if settings.is_overlay and settings.use_group_color:
                 self._update_overlay_group_legend(settings, first_line_color)
             else:

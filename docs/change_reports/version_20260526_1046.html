@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Skin Analysis 變更報告 - 2026-05-26 10:46</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: #1f2933;
+      background: #ffffff;
+      line-height: 1.55;
+    }
+    main {
+      max-width: 920px;
+      margin: 0 auto;
+      padding: 32px 20px 48px;
+    }
+    header {
+      border-bottom: 1px solid #d8e0e8;
+      margin-bottom: 24px;
+      padding-bottom: 16px;
+    }
+    h1 {
+      font-size: 30px;
+      margin: 0 0 8px;
+    }
+    h2 {
+      font-size: 20px;
+      margin: 26px 0 10px;
+    }
+    .meta {
+      color: #64748b;
+      font-size: 14px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+      gap: 12px;
+      margin: 18px 0;
+    }
+    .card {
+      border: 1px solid #d8e0e8;
+      border-radius: 8px;
+      background: #f8fafc;
+      padding: 14px 16px;
+    }
+    .tag {
+      display: inline-block;
+      border-radius: 999px;
+      background: #d9f2ee;
+      color: #0f766e;
+      font-size: 13px;
+      font-weight: 700;
+      padding: 2px 10px;
+      margin-bottom: 8px;
+    }
+    ul {
+      padding-left: 22px;
+    }
+    code {
+      background: #edf2f7;
+      border-radius: 4px;
+      padding: 1px 5px;
+      font-family: "SFMono-Regular", Consolas, monospace;
+      font-size: 0.92em;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>手動 Drop 對齊</h1>
+      <p class="meta">產生時間：2026-05-26 10:46 +08:00 Asia/Taipei</p>
+      <p>本版新增 plot-only 手動 drop alignment，用於修正單條曲線自動 drop 偵測偏移造成的視覺未對齊。</p>
+    </header>
+
+    <section class="grid">
+      <article class="card">
+        <span class="tag">操作</span>
+        <p>先選 sample，再按 <code>Adjust Drop</code>，拖曳 highlighted handle 到真正 drop 點。</p>
+      </article>
+      <article class="card">
+        <span class="tag">保存</span>
+        <p>手動值寫入 <code>.skin_analysis_metadata.json</code> 的 <code>drop_time_overrides</code>。</p>
+      </article>
+      <article class="card">
+        <span class="tag">統計</span>
+        <p>修正只影響圖表顯示與匯出，不改 Delta %、Dixon Q、ANOVA 或 statistics CSV。</p>
+      </article>
+    </section>
+
+    <h2>行為變更</h2>
+    <ul>
+      <li>新增 <code>drop_time_overrides</code> metadata，依 <code>file_name + segment</code> 套用。</li>
+      <li>PBS Segment 的手動對齊不會影響 Lanolin Segment 或 Full Curve。</li>
+      <li>sample 清單與 legend 會標示 <code>[manual drop]</code>。</li>
+      <li><code>ProcessedSignal.drop_time</code> 保留自動分析值；plotting payload 另外使用 display drop time。</li>
+    </ul>
+
+    <h2>測試重點</h2>
+    <ul>
+      <li>Metadata round-trip 新增手動 drop override。</li>
+      <li>Plotting 有 override 時才平移指定 sample。</li>
+      <li>Statistics 明確忽略手動 drop override。</li>
+    </ul>
+  </main>
+</body>
+</html>

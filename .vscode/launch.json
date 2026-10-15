@@ -1,0 +1,15 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Python GUI: Skin Analysis",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/Python version/main.py",
+      "cwd": "${workspaceFolder}/Python version",
+      "envFile": "${workspaceFolder}/.env",
+      "console": "integratedTerminal",
+      "justMyCode": true
+    }
+  ]
+}
